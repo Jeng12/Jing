@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '../../types/navigation';
 import AuthInput from '../../components/AuthInput';
 import AuthButton from '../../components/AuthButton';
 import colors from '../../theme/colors';
 
-export default function LoginScreen({ navigation }) {
+type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'> };
+
+export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
