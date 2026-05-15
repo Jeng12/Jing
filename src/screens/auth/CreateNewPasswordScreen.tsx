@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '../../types/navigation';
 import AuthInput from '../../components/AuthInput';
 import AuthButton from '../../components/AuthButton';
 import colors from '../../theme/colors';
 
-export default function CreateNewPasswordScreen({ navigation }) {
+type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'CreateNewPassword'> };
+
+export default function CreateNewPasswordScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
 

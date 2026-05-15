@@ -1,9 +1,13 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AuthStackParamList } from '../../types/navigation';
 import AuthButton from '../../components/AuthButton';
 import colors from '../../theme/colors';
 
-export default function RootScreen({ navigation }) {
+type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'Root'> };
+
+export default function RootScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>

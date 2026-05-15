@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TextInput, Text, TouchableOpacity, StyleSheet, TextInputProps } from 'react-native';
 import colors from '../theme/colors';
 
-export default function AuthInput({ label, secureToggle, ...props }) {
+interface Props extends TextInputProps {
+  label?: string;
+  secureToggle?: boolean;
+}
+
+export default function AuthInput({ label, secureToggle, ...props }: Props) {
   const [hidden, setHidden] = useState(true);
 
   return (

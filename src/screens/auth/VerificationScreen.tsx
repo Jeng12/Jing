@@ -1,14 +1,22 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
+import { AuthStackParamList } from '../../types/navigation';
 import AuthButton from '../../components/AuthButton';
 import colors from '../../theme/colors';
 
-export default function VerificationScreen({ navigation, route }) {
+type Props = {
+  navigation: NativeStackNavigationProp<AuthStackParamList, 'Verification'>;
+  route: RouteProp<AuthStackParamList, 'Verification'>;
+};
+
+export default function VerificationScreen({ navigation, route }: Props) {
   const email = route?.params?.email ?? 'example@gmail.com';
   const [code, setCode] = useState(['', '', '', '']);
-  const inputs = useRef([]);
+  const inputs = useRef<(TextInput | null)[]>([]);
 
-  const handleChange = (text, index) => {
+  const handleChange = (text: string, index: number) => {
     const updated = [...code];
     updated[index] = text;
     setCode(updated);
@@ -32,7 +40,7 @@ export default function VerificationScreen({ navigation, route }) {
           {code.map((digit, i) => (
             <TextInput
               key={i}
-              ref={el => (inputs.current[i] = el)}
+              ref={el => { inputs.current[i] = el; }}
               style={[styles.otpBox, digit ? styles.otpBoxActive : null]}
               value={digit}
               onChangeText={text => handleChange(text.slice(-1), i)}
