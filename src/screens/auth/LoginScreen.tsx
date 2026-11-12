@@ -47,7 +47,7 @@ export default function LoginScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <AuthButton title="Login" onPress={() => {}} style={styles.btn} />
+        <AuthButton title="Login" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} style={styles.btn} />
       </View>
     </SafeAreaView>
   );

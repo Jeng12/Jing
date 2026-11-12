@@ -6,4 +6,6 @@ export default {
   gray: '#9E9E9E',
   placeholder: '#6B6B8A',
   inputBorder: '#3A3A5C',
+  success: '#4ADE80',
+  danger: '#FF6B6B',
 };
