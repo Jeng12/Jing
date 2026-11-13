@@ -28,6 +28,7 @@ export type AppStackParamList = {
   Goals: undefined;
   EditProfile: undefined;
   HeartRate: undefined;
+  Coach: undefined;
   Workout: undefined;
   /** Without an id: the workout that was just finished and is not saved yet. */
   WorkoutSummary: { workoutId?: string } | undefined;

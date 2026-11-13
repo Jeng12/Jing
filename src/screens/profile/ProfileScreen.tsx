@@ -80,6 +80,17 @@ export default function ProfileScreen({ navigation }: Props) {
           />
         </View>
 
+        <Text style={styles.sectionTitle}>Insights</Text>
+        <View style={styles.section}>
+          <Row
+            icon="sparkles"
+            color={colors.primary}
+            label="AI Coach"
+            detail="Analysis and answers from Claude"
+            onPress={() => navigation.navigate('Coach')}
+          />
+        </View>
+
         <Text style={styles.sectionTitle}>Goals & reminders</Text>
         <View style={styles.section}>
           <Row

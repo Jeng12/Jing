@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, records workouts in Sport mode (timer, GPS distance and pace, live heart rate and zones), shows week-over-week trends, and sends a daily summary notification. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock — there is no backend, and all data stays on the device.
+**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, records workouts in Sport mode (timer, GPS distance and pace, live heart rate and zones), shows week-over-week trends, sends a daily summary notification, and has an AI Coach (Claude) that analyses the last two weeks, single workouts, and answers questions. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock and there is no backend: all data stays on the device, except the data summary sent to the Claude API when the user runs the AI Coach with their own API key.
 
 ## Commands
 
@@ -30,6 +30,7 @@ If the web dev server keeps serving old code after edits, restart it with `npx e
 - **react-native-svg** (rings, sparkline), **@expo/vector-icons** (Ionicons)
 - **react-native-health-connect** (Garmin data via Health Connect), **react-native-ble-plx** (live heart rate)
 - **expo-location** (workout GPS, foreground only), **expo-keep-awake** (screen stays on during a workout)
+- **Claude API** (`claude-opus-5-5`) over `fetch` — the official TypeScript SDK states React Native is not supported; **expo-secure-store** holds the user's API key
 - **expo-notifications**, **@react-native-async-storage/async-storage**
 - **New Architecture** enabled (app.json)
 
@@ -54,6 +55,9 @@ src/
     liveHeartRate.android.ts  # BLE Heart Rate service client (react-native-ble-plx)
     liveHeartRate.ts          # no-op fallback (iOS/web), same exports + shared types
     notifications.ts          # daily summary notification (local only)
+    claude.ts                 # Messages API client: headers, retries, timeout, refusal/truncation checks, readable errors
+    coach.ts                  # AI Coach: data summary, system prompt, report schema, analyze/ask functions
+    apiKeyStore.ts            # API key in SecureStore (apiKeyStore.web.ts: localStorage)
   utils/
     trackerStats.ts  # pure stats: effectiveHealth, periodTotals, streak, dailyValue, buildSummary, ...
     metrics.ts       # METRICS table (label, unit, color, icon, goal) used by Trends
@@ -68,6 +72,7 @@ src/
     sport/WorkoutScreen.tsx       # recording: timer, heart rate + zone, distance, pace/speed, calories, pause/finish
     sport/WorkoutSummaryScreen.tsx # results, route shape, heart-rate chart, zones; save/discard or delete
     sport/HeartRateScreen.tsx     # connect the watch's Broadcast Heart Rate, live bpm, zones
+    coach/CoachScreen.tsx         # API key setup, two-week analysis, chat with the coach
     trends/TrendsScreen.tsx   # 7-day chart per metric + all-metric comparison cards
     learn/LearnScreen.tsx     # add learning sessions, today's list, topics this week
     profile/                  # ProfileScreen, EditProfileScreen, GoalsScreen
@@ -86,7 +91,7 @@ AuthStack (NativeStack)       ← when signed out
 
 AppStack (NativeStack)        ← when signed in
   Tabs (BottomTabs): Today | Sport | Trends | Learn | Profile
-  LogHealth, Summary, Watch, Goals, EditProfile, HeartRate, Workout, WorkoutSummary   ← opened from any tab
+  LogHealth, Summary, Watch, Goals, EditProfile, HeartRate, Coach, Workout, WorkoutSummary   ← opened from any tab
 ```
 
 Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type screens with `TabScreenProps<'Today'>`, `AppScreenProps<'Watch'>` or `AuthScreenProps<'Login'>` from `src/types/navigation.ts`. From a tab, open another tab with `navigation.navigate('Tabs', { screen: 'Sport' })`. Finishing a workout replaces `Workout` with `WorkoutSummary`, so Back returns to the tabs.
@@ -106,6 +111,12 @@ Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type scr
 - Heart rate comes from `LiveHeartRateContext` when the watch is broadcasting; each new sample adds to avg/max, zone seconds and a 10-second series for the summary chart.
 - Calories are an estimate: MET (per sport, in `SPORTS`) × `goals.weightKg` × hours.
 - **Finish** stores a `draft`; the summary screen saves it to `TrackerData.workouts` or discards it. If the user leaves without choosing, the Sport tab shows an "Unsaved" banner.
+
+### AI Coach
+
+- `services/claude.ts` posts to `https://api.anthropic.com/v1/messages` with `anthropic-version: 2026-10-21`, model `claude-opus-5-5`, `output_config.effort: "medium"`, and server-side refusal fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). It retries 429/5xx/529 twice, times out at 120 s, checks `stop_reason` (`refusal`, `max_tokens`) before reading text blocks, and maps failures to `ClaudeError` kinds with user-facing text in `describeClaudeError`. On web it adds `anthropic-dangerous-direct-browser-access`.
+- `services/coach.ts` builds a compact JSON of the last 14 days (`buildDataContext`; unrecorded fields are left out) and has one system prompt. Reports use structured outputs (`output_config.format` JSON schema → `CoachReport`); the chat is plain text, and the first user turn carries the data so follow-ups keep it.
+- Two-week reports are cached in AsyncStorage (`jing.coach.v1`); workout reports are saved on the workout (`Workout.coachReport`) so they are not requested twice. Nothing is sent until the user taps Analyse or Ask.
 
 ### Theme
 
@@ -140,7 +151,7 @@ All colors come from `src/theme/colors.ts` — import the `Colors` object, never
 
 ## Known Gaps / Next Steps
 
-1. **Real auth/backend** — sign-in is local only; data never leaves the phone.
+1. **Real auth/backend** — sign-in is local only. The AI Coach uses the user's own API key from the phone, which suits a personal app; a published app should call Claude through its own server instead.
 2. **iOS watch support** — Health Connect and BLE are wired for Android only (iOS would need HealthKit and BLE permission strings).
 3. **Background workouts** — GPS only counts while Jing is open (the screen is kept on); recording with the screen locked would need a location foreground service.
 4. **Real-time steps** — only heart rate is live; steps, sleep and activities arrive when Garmin Connect syncs to Health Connect. Truly live steps would need a Connect IQ watch app or Garmin's licensed Health SDK.

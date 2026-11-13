@@ -81,6 +81,26 @@ export interface Workout {
   heartRateSeries?: number[];
   /** Route as [latitude, longitude] pairs, thinned to at most a few hundred points. */
   route?: [number, number][];
+  /** AI Coach analysis of this workout, kept so it is not requested again. */
+  coachReport?: CoachReport;
+}
+
+export type CoachArea = 'sleep' | 'activity' | 'heart' | 'workouts' | 'learning' | 'hydration' | 'mood' | 'overall';
+export type CoachTone = 'positive' | 'watch' | 'neutral';
+
+export interface CoachInsight {
+  area: CoachArea;
+  tone: CoachTone;
+  title: string;
+  detail: string;
+}
+
+/** A structured analysis from Claude. */
+export interface CoachReport {
+  headline: string;
+  insights: CoachInsight[];
+  actions: string[];
+  generatedAt: string; // ISO
 }
 
 export interface ProgressSummary {

@@ -207,6 +207,15 @@ export default function TodayScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity style={styles.coachCard} onPress={() => navigation.navigate('Coach')}>
+          <Ionicons name="sparkles" size={22} color={colors.primary} />
+          <View style={styles.coachText}>
+            <Text style={styles.coachTitle}>AI Coach</Text>
+            <Text style={styles.coachSub}>Get insights on your sleep, workouts and learning</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.gray} />
+        </TouchableOpacity>
+
         <View style={styles.actions}>
           <TouchableOpacity style={styles.workoutBtn} onPress={() => navigation.navigate('Tabs', { screen: 'Sport' })}>
             <Ionicons name="fitness" size={20} color={colors.primary} />
@@ -293,6 +302,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   moodEmoji: { fontSize: 34 },
+  coachCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 20,
+    padding: 14,
+    marginBottom: 16,
+  },
+  coachText: { flex: 1 },
+  coachTitle: { color: colors.white, fontSize: 15, fontWeight: '700' },
+  coachSub: { color: colors.gray, fontSize: 12, marginTop: 2 },
   actions: { flexDirection: 'row', gap: 12 },
   workoutBtn: {
     flex: 1,

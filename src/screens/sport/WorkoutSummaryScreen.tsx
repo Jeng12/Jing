@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Polyline } from 'react-native-svg';
@@ -12,6 +12,10 @@ import { routeToPoints } from '../../utils/geo';
 import AuthButton from '../../components/AuthButton';
 import ScreenHeader from '../../components/ScreenHeader';
 import Sparkline from '../../components/Sparkline';
+import CoachReportView from '../../components/CoachReportView';
+import { getApiKey } from '../../services/apiKeyStore';
+import { describeClaudeError } from '../../services/claude';
+import { analyzeWorkout } from '../../services/coach';
 import colors from '../../theme/colors';
 
 type Props = AppScreenProps<'WorkoutSummary'>;
@@ -20,7 +24,9 @@ const ROUTE_HEIGHT = 200;
 
 export default function WorkoutSummaryScreen({ navigation, route }: Props) {
   const workoutId = route.params?.workoutId;
-  const { data, removeWorkout } = useTracker();
+  const { data, removeWorkout, addWorkout } = useTracker();
+  const [analyzing, setAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState('');
   const { draft, saveDraft, discardDraft } = useWorkout();
   const [width, setWidth] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -37,6 +43,21 @@ export default function WorkoutSummaryScreen({ navigation, route }: Props) {
       </SafeAreaView>
     );
   }
+
+  const runAnalysis = async () => {
+    const apiKey = await getApiKey();
+    if (!apiKey) return navigation.navigate('Coach');
+    setAnalyzing(true);
+    setAiError('');
+    try {
+      const coachReport = await analyzeWorkout(apiKey, workout, data);
+      addWorkout({ ...workout, coachReport });
+    } catch (e) {
+      setAiError(describeClaudeError(e));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const sport = SPORTS[workout.sport];
   const start = new Date(workout.startedAt);
@@ -134,6 +155,26 @@ export default function WorkoutSummaryScreen({ navigation, route }: Props) {
           </View>
         )}
 
+        {!isDraft && (
+          <View style={styles.aiSection}>
+            <Text style={styles.cardTitle}>AI analysis</Text>
+            {workout.coachReport ? (
+              <CoachReportView report={workout.coachReport} />
+            ) : analyzing ? (
+              <View style={styles.aiLoading}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={styles.footnote}>Claude is looking at this workout…</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.aiButton} onPress={runAnalysis}>
+                <Text style={styles.aiButtonText}>✨ Analyse with AI Coach</Text>
+              </TouchableOpacity>
+            )}
+            {!!aiError && <Text style={styles.aiError}>{aiError}</Text>}
+          </View>
+        )}
+        {isDraft && <Text style={styles.footnote}>Save the workout to get an AI analysis of it.</Text>}
+
         {!workout.avgHeartRate && (
           <Text style={styles.footnote}>No heart rate was recorded. Connect your watch in Sport → Watch heart rate before your next workout.</Text>
         )}
@@ -197,6 +238,11 @@ const styles = StyleSheet.create({
   zoneFill: { height: 10, borderRadius: 5 },
   zoneTime: { color: colors.gray, fontSize: 12, width: 52, textAlign: 'right' },
   footnote: { color: colors.gray, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 8 },
+  aiSection: { marginBottom: 8 },
+  aiLoading: { alignItems: 'center', gap: 8, paddingVertical: 12 },
+  aiButton: { borderWidth: 1.5, borderColor: colors.primary, borderRadius: 30, paddingVertical: 14, alignItems: 'center' },
+  aiButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
+  aiError: { color: colors.danger, fontSize: 13, textAlign: 'center', marginTop: 8 },
   save: { marginTop: 20 },
   secondary: { alignItems: 'center', paddingVertical: 16 },
   danger: { color: colors.danger, fontSize: 15, fontWeight: '600' },

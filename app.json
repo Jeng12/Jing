@@ -59,7 +59,8 @@
         {
           "locationWhenInUsePermission": "Jing uses your location to measure distance and pace during workouts."
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

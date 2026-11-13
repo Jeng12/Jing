@@ -188,8 +188,14 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     setData(prev => ({ ...prev, goals }));
   }, []);
 
+  /** Adds a new workout at the top of the history, or updates an existing one in place. */
   const addWorkout = useCallback((workout: Workout) => {
-    setData(prev => ({ ...prev, workouts: [workout, ...prev.workouts.filter(w => w.id !== workout.id)] }));
+    setData(prev => ({
+      ...prev,
+      workouts: prev.workouts.some(w => w.id === workout.id)
+        ? prev.workouts.map(w => (w.id === workout.id ? workout : w))
+        : [workout, ...prev.workouts],
+    }));
   }, []);
 
   const removeWorkout = useCallback((id: string) => {

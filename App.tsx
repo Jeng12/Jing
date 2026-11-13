@@ -19,6 +19,7 @@ import SportScreen from './src/screens/sport/SportScreen';
 import HeartRateScreen from './src/screens/sport/HeartRateScreen';
 import WorkoutScreen from './src/screens/sport/WorkoutScreen';
 import WorkoutSummaryScreen from './src/screens/sport/WorkoutSummaryScreen';
+import CoachScreen from './src/screens/coach/CoachScreen';
 import TrendsScreen from './src/screens/trends/TrendsScreen';
 import LearnScreen from './src/screens/learn/LearnScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
@@ -95,6 +96,7 @@ function SignedInApp() {
       <AppStack.Screen name="Goals" component={GoalsScreen} />
       <AppStack.Screen name="EditProfile" component={EditProfileScreen} />
       <AppStack.Screen name="HeartRate" component={HeartRateScreen} />
+      <AppStack.Screen name="Coach" component={CoachScreen} />
       <AppStack.Screen name="Workout" component={WorkoutScreen} options={{ animation: 'slide_from_bottom' }} />
       <AppStack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} options={{ gestureEnabled: false }} />
     </AppStack.Navigator>
