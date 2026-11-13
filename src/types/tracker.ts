@@ -20,6 +20,9 @@ export interface WatchDay {
   sleepHours?: number;
   exerciseMinutes?: number;
   restingHeartRate?: number;
+  /** Most recent heart-rate sample Garmin wrote to Health Connect that day. */
+  latestHeartRate?: number;
+  latestHeartRateAt?: string; // ISO timestamp
 }
 
 export interface WatchSync {
@@ -31,6 +34,8 @@ export type WatchConnectResult = 'connected' | 'denied' | 'needs-update' | 'unav
 
 export interface TrackerGoals {
   steps: number;
+  /** Used for heart-rate zones; roughly 220 minus age. */
+  maxHeartRate: number;
   learningMinutes: number;
   waterGlasses: number;
   sleepHours: number;
@@ -57,4 +62,21 @@ export interface ProgressSummary {
   body: string;
   today: string[];
   week: string[];
+}
+
+export type MetricKey = 'steps' | 'heart' | 'sleep' | 'exercise' | 'learning' | 'water';
+
+/** What Health Connect holds for one record type, shown on the Watch screen to explain missing data. */
+export interface WatchDiagnosticsRow {
+  type: string;
+  count: number;
+  sources: string[];
+  error?: string;
+}
+
+export interface WatchDiagnostics {
+  status: 'available' | 'needs-update' | 'unavailable';
+  granted: string[];
+  rows: WatchDiagnosticsRow[];
+  checkedAt: string;
 }

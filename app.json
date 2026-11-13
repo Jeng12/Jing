@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "JingTemp",
+    "name": "Jing",
     "slug": "JingTemp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#14142A"
     },
     "ios": {
       "supportsTablet": true
@@ -18,7 +18,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#14142A"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.jeng12.jing",
@@ -26,7 +26,8 @@
         "android.permission.health.READ_STEPS",
         "android.permission.health.READ_SLEEP",
         "android.permission.health.READ_EXERCISE",
-        "android.permission.health.READ_RESTING_HEART_RATE"
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_HEART_RATE"
       ]
     },
     "web": {
@@ -41,6 +42,14 @@
           "android": {
             "minSdkVersion": 26
           }
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [],
+          "neverForLocation": true
         }
       ]
     ]

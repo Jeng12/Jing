@@ -24,7 +24,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
         <View style={styles.form}>
           <AuthInput
             label="Email Address"
-            placeholder="Tiffanyjearsey@gmail.com"
+            placeholder="you@example.com"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -34,7 +34,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
 
         <AuthButton
           title="Next"
-          onPress={() => navigation.navigate('Verification', { email })}
+          onPress={() => navigation.navigate('Verification', { email, mode: 'reset' })}
         />
       </View>
     </SafeAreaView>

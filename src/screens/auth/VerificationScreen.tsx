@@ -4,6 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { AuthStackParamList } from '../../types/navigation';
 import AuthButton from '../../components/AuthButton';
+import { useSession } from '../../store/SessionContext';
 import colors from '../../theme/colors';
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export default function VerificationScreen({ navigation, route }: Props) {
+  const { signIn } = useSession();
   const email = route?.params?.email ?? 'example@gmail.com';
   const [code, setCode] = useState(['', '', '', '']);
   const inputs = useRef<(TextInput | null)[]>([]);
@@ -50,7 +52,15 @@ export default function VerificationScreen({ navigation, route }: Props) {
           ))}
         </View>
 
-        <AuthButton title="Continue" onPress={() => {}} style={styles.btn} />
+        <AuthButton
+          title="Continue"
+          onPress={() =>
+            route.params.mode === 'signup'
+              ? signIn({ name: route.params.name, email: route.params.email })
+              : navigation.navigate('CreateNewPassword')
+          }
+          style={styles.btn}
+        />
 
         <Text style={styles.resendRow}>
           Didn't receive code?{' '}

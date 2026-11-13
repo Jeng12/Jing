@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Jing** is a React Native (Expo) movie streaming app styled with a CINEMAX dark theme. It includes a complete authentication flow, movie browsing with category tabs, a search screen, movie detail pages, and a user profile section. All data is currently mocked locally — no backend is connected.
+**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, shows week-over-week trends, and sends a daily summary notification. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock — there is no backend, and all data stays on the device.
 
 ## Commands
 
@@ -17,137 +17,116 @@ npm run web          # run in browser
 npm run typecheck    # run TypeScript type check (tsc --noEmit)
 ```
 
+Health Connect and Bluetooth need native code, so watch features do not run in Expo Go or on web. Build an APK with `npx expo run:android`, or use the **Build Android app** GitHub Action (`.github/workflows/android-build.yml`), which uploads `jing-android-apk` as a run artifact.
+
+If the web dev server keeps serving old code after edits, restart it with `npx expo start --web --clear`.
+
 ## Tech Stack
 
 - **Expo SDK** ~54.0.33
 - **React** 19.1.0 / **React Native** 0.81.5
 - **TypeScript** 6.0.3 (strict mode, path alias `@/*` → `./src/*`)
 - **React Navigation** 7.x — `@react-navigation/native-stack`, `@react-navigation/bottom-tabs`
+- **react-native-svg** (rings, sparkline), **@expo/vector-icons** (Ionicons)
+- **react-native-health-connect** (Garmin data via Health Connect), **react-native-ble-plx** (live heart rate)
+- **expo-notifications**, **@react-native-async-storage/async-storage**
 - **New Architecture** enabled (app.json)
 
 ## Project Structure
 
 ```
-App.tsx              # root component — all navigator definitions + wiring
-index.ts             # Expo entry point (registerRootComponent)
-app.json             # Expo config (name: JingTemp, portrait, new arch on)
-tsconfig.json        # strict TS, extends expo/tsconfig.base, @/* alias
-assets/              # icon.png, adaptive-icon.png, splash-icon.png, favicon.png
+App.tsx              # providers + navigation: auth stack or signed-in app, tab bar
+app.json             # Expo config (name: Jing, portrait, dark, health/BLE permissions via plugins)
 src/
   types/
-    navigation.ts    # param lists for all stacks/tabs + Movie, Review, CastMember interfaces
-  theme/
-    colors.ts        # all color constants (see Theme section below)
-  data/
-    movies.ts        # mock arrays: FEATURED_MOVIES, NOW_PLAYING, MOVIE_REVIEWS, MOVIE_CAST
-  components/
-    AuthButton.tsx   # full-width teal pill button (title, onPress, style?)
-    AuthInput.tsx    # labelled TextInput with optional password-visibility toggle
+    navigation.ts    # param lists + AuthScreenProps / AppScreenProps / TabScreenProps helpers
+    tracker.ts       # LearningSession, HealthLog, WatchDay, TrackerGoals, TrackerData, WatchDiagnostics, MetricKey
+  theme/colors.ts    # all colors, including one accent per metric and heart-rate zone colors
+  store/
+    SessionContext.tsx        # mock sign-in + profile (AsyncStorage 'jing.session.v1')
+    TrackerContext.tsx        # logs, goals, watch data, reminder (AsyncStorage 'jing.tracker.v1')
+    LiveHeartRateContext.tsx  # Bluetooth scan/connect state, live bpm, session stats, zones
+  services/
+    healthConnect.android.ts  # reads Garmin data from Health Connect + diagnostics
+    healthConnect.ts          # no-op fallback (iOS/web), same exports
+    liveHeartRate.android.ts  # BLE Heart Rate service client (react-native-ble-plx)
+    liveHeartRate.ts          # no-op fallback (iOS/web), same exports + shared types
+    notifications.ts          # daily summary notification (local only)
+  utils/
+    trackerStats.ts  # pure stats: effectiveHealth, periodTotals, streak, dailyValue, buildSummary, ...
+    metrics.ts       # METRICS table (label, unit, color, icon, goal) used by Trends
+    heartRate.ts     # BLE packet parsing, base64 decode, heart-rate zones
+  components/        # AuthButton, AuthInput, ScreenHeader, Stepper, ProgressRing, BarChart, Sparkline, TrendCard, IconBadge
   screens/
-    auth/
-      RootScreen.tsx              # landing page — CINEMAX logo, Sign Up, Login, social buttons
-      LoginScreen.tsx             # email + password form, forgot password link
-      SignUpScreen.tsx            # name + email + password, terms checkbox → Verification
-      VerificationScreen.tsx      # 4-digit OTP, auto-focus between fields, resend link
-      ResetPasswordScreen.tsx     # email input → Verification
-      CreateNewPasswordScreen.tsx # new + confirm password → Login
-    home/
-      HomeScreen.tsx    # search bar, featured carousel, category tabs, 3-col poster grid
-      DetailScreen.tsx  # hero image, About/Reviews/Cast tabs, driven by movie route param
-    search/
-      SearchScreen.tsx  # live case-insensitive filter of NOW_PLAYING, empty state, → Detail
-    profile/
-      ProfileScreen.tsx     # avatar, premium banner, settings sections, logout modal
-      EditProfileScreen.tsx # edit name/email/password/phone, name validation
+    auth/            # Root (welcome), Login, SignUp, Verification, ResetPassword, CreateNewPassword
+    today/TodayScreen.tsx     # dashboard: rings, heart/sleep/water/mood tiles, quick water add
+    live/LiveScreen.tsx       # live heart rate: find watch, bpm, zone, sparkline, time in zones
+    trends/TrendsScreen.tsx   # 7-day chart per metric + all-metric comparison cards
+    learn/LearnScreen.tsx     # add learning sessions, today's list, topics this week
+    profile/                  # ProfileScreen, EditProfileScreen, GoalsScreen
+    tracker/                  # LogHealthScreen, SummaryScreen, WatchScreen (pushed over the tabs)
 ```
 
 ## Architecture
 
 ### Navigation
 
-All navigators are defined and composed in `App.tsx`:
+`App.tsx` renders the auth stack or the signed-in app depending on `useSession().signedIn`:
 
 ```
-AuthStack (NativeStack)           ← root navigator, wrapped in TrackerProvider
-  Root → Login → SignUp → Verification → ResetPassword → CreateNewPassword
+AuthStack (NativeStack)       ← when signed out
+  Root → Login | SignUp → Verification → (signup: signed in) | (reset: CreateNewPassword → Login)
 
-MainTabs (BottomTabs)             ← `Main` route of AuthStack, reached from Login
-  Home tab   → HomeNavigator (NativeStack)
-                  HomeMain → Detail
-  Progress   → TrackerNavigator (NativeStack)
-                  TrackerMain → LogLearning / LogHealth / Summary / Watch
-  Search tab → SearchScreen
-  WatchList  → (placeholder, no screen yet)
-  Profile    → ProfileNavigator (NativeStack)
-                  ProfileMain → EditProfile
+AppStack (NativeStack)        ← when signed in
+  Tabs (BottomTabs): Today | Live | Trends | Learn | Profile
+  LogHealth, Summary, Watch, Goals, EditProfile   ← opened from any tab
 ```
 
-`LoginScreen`'s Login button resets the stack to the `Main` route (`MainTabs`). Sign-up still ends at Login, and Profile's Log Out does not return to the auth screens yet.
+Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type screens with `TabScreenProps<'Today'>`, `AppScreenProps<'Watch'>` or `AuthScreenProps<'Login'>` from `src/types/navigation.ts`. From a tab, open another tab with `navigation.navigate('Tabs', { screen: 'Live' })`.
 
-All param lists are in `src/types/navigation.ts` and typed with `NativeStackNavigationProp` / `RouteProp` throughout screens.
+### Data and the Garmin watch
+
+- **Manual data** (`TrackerData.health`, `sessions`) is entered in Log health, the Today water button and Learn.
+- **Watch data** (`TrackerData.watch`, one `WatchDay` per date) comes from Health Connect, where Garmin Connect writes it after each watch sync. `readWatchDays` reads raw records, prefers records whose origin matches `/garmin/i` (so phone or other-app data is not double counted), and falls back to Health Connect aggregates when no Garmin records exist. It syncs 14 days on launch, on returning to the app, every minute while open, and on "Sync now".
+- **Merging:** `effectiveHealth()` uses a manual value when one is entered, otherwise the watch value. The streak counts manual logs only.
+- **Diagnostics:** `diagnoseWatch()` lists, per record type, how many records Health Connect has for the last 7 days and which apps wrote them. The Watch screen turns this into a plain-language reason when data is missing (e.g. "no data from Garmin Connect").
+- **Live heart rate** does not go through Health Connect. The watch's *Broadcast Heart Rate* advertises the standard BLE Heart Rate service (0x180D / 0x2A37); `LiveHeartRateContext` scans, connects, parses packets with `parseHeartRateMeasurement`, keeps ~2 minutes of samples for the chart, and tracks min/avg/max and time in zones (zones from `goals.maxHeartRate`). It retries up to 3 times after an unexpected disconnect.
 
 ### Theme
 
 All colors come from `src/theme/colors.ts` — import the `Colors` object, never use raw hex strings inline:
 
-| Token | Hex | Usage |
-|---|---|---|
-| `Colors.background` | `#1C1C2E` | screen backgrounds |
-| `Colors.card` | `#252545` | card / input backgrounds |
-| `Colors.primary` | `#00D4D4` | buttons, active tabs, accents |
-| `Colors.white` | `#FFFFFF` | primary text |
-| `Colors.gray` | `#9E9E9E` | secondary text |
-| `Colors.placeholder` | `#6B6B8A` | input placeholder text |
-| `Colors.inputBorder` | `#3A3A5C` | text input borders |
-
-### Data Layer
-
-`src/data/movies.ts` exports four arrays used across screens:
-
-- `FEATURED_MOVIES` — 2 items, shown in HomeScreen horizontal carousel
-- `NOW_PLAYING` — 4 items, shown in HomeScreen grid and filtered by SearchScreen
-- `MOVIE_REVIEWS` — 2 review objects consumed by DetailScreen Reviews tab
-- `MOVIE_CAST` — 4 cast members consumed by DetailScreen Cast tab
-
-The `Movie` / `Review` / `CastMember` interfaces are defined in `src/types/navigation.ts` (not a separate file).
-
-### Progress Tracker
-
-The Progress tab tracks learning sessions and daily health (water, sleep, exercise, mood) and shows week-over-week improvement.
-
-- `src/types/tracker.ts` — `LearningSession`, `HealthLog`, `TrackerData`, `ProgressSummary`
-- `src/store/TrackerContext.tsx` — `TrackerProvider` / `useTracker()`; persists to AsyncStorage (`jing.tracker.v1`) and reschedules the daily notification whenever data changes
-- `src/utils/trackerStats.ts` — pure stats: daily goal progress, 7-day totals vs the previous 7 days, streak, `buildSummary()`
-- `src/services/notifications.ts` — `expo-notifications` wrapper (permission, daily summary, send-now). Local notifications only; a no-op on web
-- `src/services/healthConnect.android.ts` — reads Garmin watch data (steps, sleep, exercise, resting heart rate) from Android Health Connect via `react-native-health-connect`; `healthConnect.ts` is the no-op fallback for iOS/web with the same exports
-- `src/screens/tracker/` — `TrackerScreen` (dashboard), `LogLearningScreen`, `LogHealthScreen`, `SummaryScreen` (summary + reminder settings), `WatchScreen` (connect / sync the watch)
-- `src/components/ScreenHeader.tsx`, `Stepper.tsx` — back-arrow header and −/+ number row
-
-Watch data is stored separately (`TrackerData.watch`) and merged at read time by `effectiveHealth()` — a manually entered value always wins, and the streak counts manual logs only. It syncs the last 14 days on launch, on returning to the foreground, and on "Sync now".
-
-Health Connect needs native code: it does not run in Expo Go. Build with `npx expo run:android` or EAS (the config plugins in `app.json` set the health permissions and `minSdkVersion` 26).
-
-Unlike the movie data, tracker data is real user input, not mocked. Extra theme tokens: `Colors.success`, `Colors.danger`.
+| Token | Usage |
+|---|---|
+| `background`, `card`, `cardRaised`, `ringTrack` | surfaces, ring/bar tracks |
+| `primary` | buttons, active tab, links |
+| `white`, `gray`, `placeholder`, `inputBorder` | text and inputs |
+| `success`, `danger`, `overlay` | trend up/down, destructive actions, modal backdrop |
+| `steps`, `heart`, `sleep`, `water`, `exercise`, `learning`, `mood` | one accent per metric — use the same one for its icon, ring and chart |
+| `zone1`–`zone5` | heart-rate zones |
 
 ### Shared Components
 
-**`AuthButton`** — use for any full-width action button. Props: `title`, `onPress`, optional `style` override.
-
-**`AuthInput`** — use for any form text field. Accepts all `TextInputProps` plus `label` (displayed above), `secureToggle` (boolean, shows eye icon for password visibility).
+- **`AuthButton`** — full-width primary pill button (`title`, `onPress`, `style?`).
+- **`AuthInput`** — labelled text field; all `TextInputProps` plus `label`, `secureToggle`.
+- **`ScreenHeader`** — back arrow + centered title for pushed screens.
+- **`Stepper`** — label + −/+ number row (`step`, `min`, `max`, `format`).
+- **`ProgressRing`** — one or more concentric SVG rings (`rings: { progress, color }[]`), children render in the center.
+- **`BarChart`**, **`Sparkline`**, **`TrendCard`**, **`IconBadge`** — charts and metric cards.
 
 ## Conventions
 
 - **No inline colors** — always use `Colors.*` from `src/theme/colors.ts`.
-- **Type every navigation prop** — use the param lists from `src/types/navigation.ts`; never use `any` or untyped `useNavigation()`.
-- **Route params are the data source** — DetailScreen receives the full `Movie` object via route params; screens do not fetch or import mock arrays directly when they can receive data through navigation.
-- **StyleSheet.create** — define styles with `StyleSheet.create` at the bottom of each file, not inline style objects.
-- **Mock data only** — there is no API or auth service. Forms navigate forward unconditionally (except EditProfileScreen's name check).
-- **Portrait only** — the app is locked to portrait orientation in `app.json`.
+- **Type every navigation prop** with the helpers in `src/types/navigation.ts`; never use `any` or untyped `useNavigation()`.
+- **StyleSheet.create** at the bottom of each file; inline style objects only for computed values (widths, per-metric colors).
+- **Platform-specific services** use `name.android.ts` + a `name.ts` fallback with identical exports, so web/iOS keep compiling and rendering.
+- **Mock auth only** — there is no API or auth service; forms navigate forward without checking credentials.
+- **Portrait only** — locked in `app.json`.
 
 ## Known Gaps / Next Steps
 
-1. **Logout not wired** — Profile's Log Out modal does not navigate back to the auth stack.
-2. **WatchList tab** — exists in `MainTabParamList` but has no screen component.
-3. **Category tabs (HomeScreen)** — the 4 tabs (Now Playing, Upcoming, Top Rated, Popular) are rendered but all show the same `NOW_PLAYING` data; each needs its own dataset.
-4. **Real auth/backend** — all auth screens are UI-only shells.
-5. **Search scope** — `SearchScreen` only filters `NOW_PLAYING`; `HomeScreen` search bar is a local state that does not navigate to `SearchScreen`.
+1. **Real auth/backend** — sign-in is local only; data never leaves the phone.
+2. **iOS watch support** — Health Connect and BLE are wired for Android only (iOS would need HealthKit and BLE permission strings).
+3. **Real-time steps** — only heart rate is live; steps, sleep and activities arrive when Garmin Connect syncs to Health Connect. Truly live steps would need a Connect IQ watch app or Garmin's licensed Health SDK.
+4. **Notification text** is fixed when scheduled; it reflects data as of the last time the app was open.
+5. **Unused auth assets** — the social sign-in buttons on the welcome screen do nothing.

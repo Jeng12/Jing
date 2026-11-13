@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TrackerStackParamList } from '../../types/navigation';
+import { AppScreenProps } from '../../types/navigation';
 import { useTracker } from '../../store/TrackerContext';
 import { watchDay } from '../../utils/trackerStats';
 import AuthButton from '../../components/AuthButton';
@@ -10,7 +9,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import Stepper from '../../components/Stepper';
 import colors from '../../theme/colors';
 
-type Props = { navigation: NativeStackNavigationProp<TrackerStackParamList, 'LogHealth'> };
+type Props = AppScreenProps<'LogHealth'>;
 
 const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
 

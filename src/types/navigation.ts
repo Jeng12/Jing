@@ -1,59 +1,39 @@
+import type { NavigatorScreenParams, CompositeScreenProps } from '@react-navigation/native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+
 export type AuthStackParamList = {
   Root: undefined;
   Login: undefined;
   SignUp: undefined;
-  Verification: { email: string };
+  Verification: { email: string; name?: string; mode: 'signup' | 'reset' };
   ResetPassword: undefined;
   CreateNewPassword: undefined;
-  Main: undefined;
 };
 
 export type MainTabParamList = {
-  Home: undefined;
-  Progress: undefined;
-  Search: undefined;
-  WatchList: undefined;
+  Today: undefined;
+  Live: undefined;
+  Trends: undefined;
+  Learn: undefined;
   Profile: undefined;
 };
 
-export type HomeStackParamList = {
-  HomeMain: undefined;
-  Detail: { movie: Movie };
-};
-
-export type TrackerStackParamList = {
-  TrackerMain: undefined;
-  LogLearning: undefined;
+/** Signed-in app: the tabs plus screens any tab can open on top of them. */
+export type AppStackParamList = {
+  Tabs: NavigatorScreenParams<MainTabParamList>;
   LogHealth: undefined;
   Summary: undefined;
   Watch: undefined;
-};
-
-export type ProfileStackParamList = {
-  ProfileMain: undefined;
+  Goals: undefined;
   EditProfile: undefined;
 };
 
-export interface Movie {
-  id: string;
-  title: string;
-  year: number;
-  duration: string;
-  genre: string;
-  rating: number;
-  poster: string;
-  description: string;
-}
+export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<AuthStackParamList, T>;
 
-export interface Review {
-  id: string;
-  author: string;
-  rating: number;
-  text: string;
-}
+export type AppScreenProps<T extends keyof AppStackParamList> = NativeStackScreenProps<AppStackParamList, T>;
 
-export interface CastMember {
-  id: string;
-  name: string;
-  photo: string;
-}
+export type TabScreenProps<T extends keyof MainTabParamList> = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, T>,
+  NativeStackScreenProps<AppStackParamList>
+>;

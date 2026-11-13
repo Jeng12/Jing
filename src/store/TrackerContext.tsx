@@ -5,6 +5,7 @@ import {
   ProgressSummary,
   ReminderSettings,
   TrackerData,
+  TrackerGoals,
   WatchConnectResult,
   WatchDay,
 } from '../types/tracker';
@@ -22,13 +23,15 @@ const STORAGE_KEY = 'jing.tracker.v1';
 const DEFAULT_DATA: TrackerData = {
   sessions: [],
   health: {},
-  goals: { steps: 8000, learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
+  goals: { steps: 8000, maxHeartRate: 190, learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
   reminder: { enabled: false, hour: 20, minute: 0 },
   watch: {},
   watchSync: { enabled: false, lastSyncedAt: null },
 };
 
 const WATCH_SYNC_DAYS = 14;
+/** Garmin Connect pushes new watch data to Health Connect every few minutes; check this often while open. */
+const WATCH_POLL_MS = 60_000;
 
 interface TrackerContextValue {
   data: TrackerData;
@@ -40,6 +43,7 @@ interface TrackerContextValue {
   healthFor: (date?: string) => HealthLog;
   /** Resolves false when turning on fails because notification permission was not granted. */
   setReminder: (reminder: ReminderSettings) => Promise<boolean>;
+  updateGoals: (goals: TrackerGoals) => void;
   /** Asks for Health Connect access, then pulls the watch data in. */
   connectWatch: () => Promise<WatchConnectResult>;
   disconnectWatch: () => void;
@@ -69,10 +73,18 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loaded) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data)).catch(() => undefined);
-    const { enabled, hour, minute } = data.reminder;
-    const sync = enabled ? scheduleDailySummary(hour, minute, summary) : cancelDailySummary();
+  }, [data, loaded]);
+
+  // Reschedule only when the notification's text or time changes, not on every watch poll.
+  const { enabled: reminderOn, hour, minute } = data.reminder;
+  useEffect(() => {
+    if (!loaded) return;
+    const sync = reminderOn
+      ? scheduleDailySummary(hour, minute, summary)
+      : cancelDailySummary();
     sync.catch(() => undefined);
-  }, [data, loaded, summary]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, reminderOn, hour, minute, summary.title, summary.body]);
 
   const addSession = useCallback((topic: string, minutes: number) => {
     const session = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, date: dateKey(), topic, minutes };
@@ -135,16 +147,30 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     setData(prev => ({ ...prev, watch: {}, watchSync: { enabled: false, lastSyncedAt: null } }));
   }, []);
 
-  // Refresh watch data on launch and whenever the app returns to the foreground.
+  // Refresh watch data on launch, on returning to the app, and every minute while it is open.
   const watchEnabled = data.watchSync.enabled;
   useEffect(() => {
     if (!loaded || !watchEnabled) return;
-    syncWatch();
-    const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') syncWatch();
-    });
-    return () => sub.remove();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      syncWatch();
+      timer ??= setInterval(syncWatch, WATCH_POLL_MS);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    if (AppState.currentState === 'active') start();
+    const sub = AppState.addEventListener('change', state => (state === 'active' ? start() : stop()));
+    return () => {
+      stop();
+      sub.remove();
+    };
   }, [loaded, watchEnabled, syncWatch]);
+
+  const updateGoals = useCallback((goals: TrackerGoals) => {
+    setData(prev => ({ ...prev, goals }));
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -156,6 +182,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       saveHealth,
       healthFor,
       setReminder,
+      updateGoals,
       connectWatch,
       disconnectWatch,
       syncWatch,
@@ -169,6 +196,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       saveHealth,
       healthFor,
       setReminder,
+      updateGoals,
       connectWatch,
       disconnectWatch,
       syncWatch,

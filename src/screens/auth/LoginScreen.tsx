@@ -5,12 +5,14 @@ import { AuthStackParamList } from '../../types/navigation';
 import AuthInput from '../../components/AuthInput';
 import AuthButton from '../../components/AuthButton';
 import colors from '../../theme/colors';
+import { useSession } from '../../store/SessionContext';
 
 type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'> };
 
 export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { signIn } = useSession();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -23,13 +25,13 @@ export default function LoginScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.greeting}>Hi, Tiffany</Text>
+        <Text style={styles.greeting}>Welcome back</Text>
         <Text style={styles.subtitle}>Welcome back! Please enter{'\n'}your details.</Text>
 
         <View style={styles.form}>
           <AuthInput
             label="Email Address"
-            placeholder="Tiffanyjearsey@gmail.com"
+            placeholder="you@example.com"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -47,7 +49,7 @@ export default function LoginScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <AuthButton title="Login" onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })} style={styles.btn} />
+        <AuthButton title="Login" onPress={() => signIn({ email })} style={styles.btn} />
       </View>
     </SafeAreaView>
   );

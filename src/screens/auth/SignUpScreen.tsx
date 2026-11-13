@@ -26,18 +26,18 @@ export default function SignUpScreen({ navigation }: Props) {
 
       <View style={styles.content}>
         <Text style={styles.heading}>Let's get started</Text>
-        <Text style={styles.subtitle}>The latest movies and series{'\n'}are here</Text>
+        <Text style={styles.subtitle}>Build healthy habits,{'\n'}one day at a time</Text>
 
         <View style={styles.form}>
           <AuthInput
             label="Full Name"
-            placeholder="Tiffany"
+            placeholder="Your name"
             value={name}
             onChangeText={setName}
           />
           <AuthInput
             label="Email Address"
-            placeholder="Tiffanyjearsey@gmail.com"
+            placeholder="you@example.com"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -65,7 +65,7 @@ export default function SignUpScreen({ navigation }: Props) {
 
         <AuthButton
           title="Sign Up"
-          onPress={() => navigation.navigate('Verification', { email })}
+          onPress={() => navigation.navigate('Verification', { email, name, mode: 'signup' })}
         />
       </View>
     </SafeAreaView>

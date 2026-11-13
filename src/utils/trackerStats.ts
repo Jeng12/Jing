@@ -1,4 +1,4 @@
-import { HealthLog, ProgressSummary, TrackerData, WatchDay } from '../types/tracker';
+import { HealthLog, MetricKey, ProgressSummary, TrackerData, WatchDay } from '../types/tracker';
 
 export function dateKey(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -178,4 +178,60 @@ export function buildSummary(data: TrackerData): ProgressSummary {
     today,
     week,
   };
+}
+
+/** One metric's value for one day, or null when nothing was recorded. Used by the Trends charts. */
+export function dailyValue(data: TrackerData, metric: MetricKey, date: string): number | null {
+  const h = effectiveHealth(data, date);
+  const w = watchDay(data, date);
+  const nonZero = (n: number | undefined) => (n ? n : null);
+  switch (metric) {
+    case 'steps':
+      return nonZero(w?.steps);
+    case 'heart':
+      return nonZero(w?.restingHeartRate);
+    case 'sleep':
+      return nonZero(h.sleepHours);
+    case 'exercise':
+      return nonZero(h.exerciseMinutes);
+    case 'learning':
+      return nonZero(learningMinutesOn(data, date));
+    case 'water':
+      return nonZero(h.waterGlasses);
+  }
+}
+
+/** Average of the recorded days (totals would punish days the watch was off). */
+export function averageOf(values: (number | null)[]): number | null {
+  const present = values.filter((v): v is number => v !== null);
+  return present.length ? present.reduce((a, b) => a + b, 0) / present.length : null;
+}
+
+/** Newest heart rate the app knows about from Health Connect today, if any. */
+export function latestSyncedHeartRate(data: TrackerData): { bpm: number; at: string } | null {
+  const w = watchDay(data, dateKey());
+  return w?.latestHeartRate && w.latestHeartRateAt ? { bpm: w.latestHeartRate, at: w.latestHeartRateAt } : null;
+}
+
+/** Topic → minutes for the given days, largest first. */
+export function topicTotals(data: TrackerData, days: string[]): { topic: string; minutes: number }[] {
+  const totals: Record<string, number> = {};
+  data.sessions
+    .filter(s => days.includes(s.date))
+    .forEach(s => {
+      const key = s.topic.trim();
+      totals[key] = (totals[key] ?? 0) + s.minutes;
+    });
+  return Object.entries(totals)
+    .map(([topic, minutes]) => ({ topic, minutes }))
+    .sort((a, b) => b.minutes - a.minutes);
+}
+
+export function timeAgo(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
 }

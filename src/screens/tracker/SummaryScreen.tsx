@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, Switch, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TrackerStackParamList } from '../../types/navigation';
+import { AppScreenProps } from '../../types/navigation';
 import { useTracker } from '../../store/TrackerContext';
 import {
   ensureNotificationPermission,
@@ -14,7 +13,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import Stepper from '../../components/Stepper';
 import colors from '../../theme/colors';
 
-type Props = { navigation: NativeStackNavigationProp<TrackerStackParamList, 'Summary'> };
+type Props = AppScreenProps<'Summary'>;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TrackerStackParamList } from '../../types/navigation';
-import { WatchConnectResult } from '../../types/tracker';
+import { Ionicons } from '@expo/vector-icons';
+import { AppScreenProps } from '../../types/navigation';
+import { WatchConnectResult, WatchDiagnostics } from '../../types/tracker';
 import { useTracker } from '../../store/TrackerContext';
-import { openWatchSettings, watchSupported } from '../../services/healthConnect';
-import { dateKey } from '../../utils/trackerStats';
+import { diagnoseWatch, openWatchSettings, watchSupported } from '../../services/healthConnect';
+import { dateKey, timeAgo } from '../../utils/trackerStats';
 import AuthButton from '../../components/AuthButton';
 import ScreenHeader from '../../components/ScreenHeader';
 import colors from '../../theme/colors';
 
-type Props = { navigation: NativeStackNavigationProp<TrackerStackParamList, 'Watch'> };
+type Props = AppScreenProps<'Watch'>;
 
 const CONNECT_MESSAGES: Record<WatchConnectResult, string> = {
   connected: 'Connected. Your watch data is now on the dashboard.',
@@ -22,21 +22,56 @@ const CONNECT_MESSAGES: Record<WatchConnectResult, string> = {
 };
 
 const SETUP_STEPS = [
-  'Sync your watch in the Garmin Connect app.',
-  'In the Garmin Connect menu, find Health Connect and allow it to share steps, sleep, heart rate and activities.',
-  'Tap Connect below and allow Jing to read steps, sleep, exercise and resting heart rate.',
+  'Open the Garmin Connect app and sync your watch.',
+  'In Garmin Connect, open the menu, find Health Connect, and allow it to share steps, sleep, heart rate and activities.',
+  'Tap Connect below and allow Jing to read the same data.',
 ];
+
+const isGarminSource = (source: string) => /garmin/i.test(source);
+
+/** Plain-language reason for missing data, worked out from what Health Connect holds. */
+function explain(d: WatchDiagnostics): { ok: boolean; text: string } {
+  if (d.status !== 'available') return { ok: false, text: 'Health Connect is not available on this phone.' };
+  if (!d.granted.length) {
+    return { ok: false, text: 'Jing is not allowed to read anything yet. Tap Open Health Connect → App permissions → Jing, and allow all.' };
+  }
+  const anyData = d.rows.some(r => r.count > 0);
+  const garmin = d.rows.some(r => r.sources.some(isGarminSource));
+  if (garmin) return { ok: true, text: 'Garmin data is reaching Health Connect and Jing can read it.' };
+  if (anyData) {
+    return {
+      ok: false,
+      text: 'Health Connect has data, but none from Garmin Connect. In Garmin Connect, turn on Health Connect sharing, then sync your watch.',
+    };
+  }
+  return {
+    ok: false,
+    text: 'Health Connect has no data from the last 7 days. In Garmin Connect, turn on Health Connect sharing and sync your watch, then check again.',
+  };
+}
 
 export default function WatchScreen({ navigation }: Props) {
   const { data, connectWatch, disconnectWatch, syncWatch } = useTracker();
   const { enabled, lastSyncedAt } = data.watchSync;
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<WatchDiagnostics | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const today = data.watch[dateKey()];
-  const hasAnyData = Object.values(data.watch).some(
-    d => d.steps || d.sleepHours || d.exerciseMinutes || d.restingHeartRate,
-  );
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      setDiagnostics(await diagnoseWatch());
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (enabled && watchSupported) check();
+  }, [enabled, check]);
 
   const run = async (action: () => Promise<string>) => {
     setBusy(true);
@@ -50,16 +85,21 @@ export default function WatchScreen({ navigation }: Props) {
 
   const connect = () => run(async () => CONNECT_MESSAGES[await connectWatch()]);
   const sync = () =>
-    run(async () => ((await syncWatch()) ? 'Synced.' : 'Could not read Health Connect. Check that access is still allowed.'));
+    run(async () => {
+      const ok = await syncWatch();
+      await check();
+      return ok ? 'Synced.' : 'Could not read Health Connect. Check that access is still allowed.';
+    });
 
-  const stat = (icon: string, label: string, value: string | undefined) => (
+  const stat = (icon: React.ComponentProps<typeof Ionicons>['name'], color: string, label: string, value?: string) => (
     <View style={styles.statRow}>
-      <Text style={styles.statLabel}>
-        {icon} {label}
-      </Text>
+      <Ionicons name={icon} size={16} color={color} />
+      <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value ?? '—'}</Text>
     </View>
   );
+
+  const verdict = diagnostics ? explain(diagnostics) : null;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -72,30 +112,77 @@ export default function WatchScreen({ navigation }: Props) {
         ) : (
           <>
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>{enabled ? '⌚ Connected' : '⌚ Not connected'}</Text>
-              <Text style={styles.cardHint}>
-                {enabled
-                  ? lastSyncedAt
-                    ? `Last synced ${new Date(lastSyncedAt).toLocaleString()}`
-                    : 'Not synced yet'
-                  : 'Sleep, exercise, steps and resting heart rate can be filled in from your watch.'}
-              </Text>
+              <View style={styles.statusRow}>
+                <Ionicons name="watch" size={26} color={enabled ? colors.primary : colors.gray} />
+                <View style={styles.flex}>
+                  <Text style={styles.cardTitle}>{enabled ? 'Connected' : 'Not connected'}</Text>
+                  <Text style={styles.cardHint}>
+                    {enabled
+                      ? lastSyncedAt
+                        ? `Checked ${timeAgo(lastSyncedAt)} · refreshes every minute while open`
+                        : 'Not synced yet'
+                      : 'Steps, sleep, activities and heart rate from Garmin Connect.'}
+                  </Text>
+                </View>
+              </View>
               {enabled && (
                 <>
                   <Text style={styles.groupTitle}>Today from your watch</Text>
-                  {stat('👟', 'Steps', today?.steps?.toLocaleString())}
-                  {stat('😴', 'Sleep', today?.sleepHours ? `${today.sleepHours} h` : undefined)}
-                  {stat('🏃', 'Exercise', today?.exerciseMinutes ? `${today.exerciseMinutes} min` : undefined)}
-                  {stat('❤️', 'Resting heart rate', today?.restingHeartRate ? `${today.restingHeartRate} bpm` : undefined)}
+                  {stat('footsteps', colors.steps, 'Steps', today?.steps?.toLocaleString())}
+                  {stat('moon', colors.sleep, 'Sleep', today?.sleepHours ? `${today.sleepHours} h` : undefined)}
+                  {stat('flame', colors.exercise, 'Activities', today?.exerciseMinutes ? `${today.exerciseMinutes} min` : undefined)}
+                  {stat('heart', colors.heart, 'Resting heart rate', today?.restingHeartRate ? `${today.restingHeartRate} bpm` : undefined)}
+                  {stat(
+                    'pulse',
+                    colors.heart,
+                    'Latest heart rate',
+                    today?.latestHeartRate && today.latestHeartRateAt
+                      ? `${today.latestHeartRate} bpm · ${timeAgo(today.latestHeartRateAt)}`
+                      : undefined,
+                  )}
                 </>
               )}
             </View>
 
-            {enabled && lastSyncedAt && !hasAnyData && (
-              <Text style={styles.warning}>
-                No data came back. Check that Garmin Connect is sharing to Health Connect and that Jing is allowed to
-                read it.
-              </Text>
+            {enabled && (
+              <View style={styles.card}>
+                <View style={styles.diagHead}>
+                  <Text style={styles.cardTitle}>What Health Connect has</Text>
+                  {checking ? (
+                    <ActivityIndicator color={colors.primary} />
+                  ) : (
+                    <TouchableOpacity onPress={check}>
+                      <Text style={styles.link}>Check again</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {verdict && (
+                  <View style={styles.verdict}>
+                    <Ionicons
+                      name={verdict.ok ? 'checkmark-circle' : 'alert-circle'}
+                      size={18}
+                      color={verdict.ok ? colors.success : colors.danger}
+                    />
+                    <Text style={styles.verdictText}>{verdict.text}</Text>
+                  </View>
+                )}
+                {diagnostics?.rows.map(row => (
+                  <View key={row.type} style={styles.diagRow}>
+                    <View style={styles.diagTop}>
+                      <Text style={styles.diagType}>{row.type}</Text>
+                      <Text style={[styles.diagCount, row.error ? styles.bad : row.count ? styles.good : null]}>
+                        {row.error ?? `${row.count} records`}
+                      </Text>
+                    </View>
+                    {row.sources.length > 0 && (
+                      <Text style={styles.diagSources}>
+                        From: {row.sources.map(s => (isGarminSource(s) ? 'Garmin Connect' : s)).join(', ')}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+                <Text style={styles.footnote}>Last 7 days. Garmin only shares new data after the watch syncs with Garmin Connect.</Text>
+              </View>
             )}
 
             {!enabled && (
@@ -115,7 +202,7 @@ export default function WatchScreen({ navigation }: Props) {
               style={styles.primaryBtn}
             />
             <TouchableOpacity style={styles.secondaryBtn} onPress={openWatchSettings}>
-              <Text style={styles.secondaryText}>Open Health Connect</Text>
+              <Text style={styles.link}>Open Health Connect</Text>
             </TouchableOpacity>
             {enabled && (
               <TouchableOpacity style={styles.secondaryBtn} onPress={disconnectWatch}>
@@ -125,7 +212,7 @@ export default function WatchScreen({ navigation }: Props) {
             {!!message && <Text style={styles.message}>{message}</Text>}
 
             <Text style={styles.footnote}>
-              Values you enter by hand in Log health always override the watch. Water, mood and learning stay manual.
+              For second-by-second heart rate, use the Live tab. Values you enter in Log health always override the watch.
             </Text>
           </>
         )}
@@ -136,22 +223,33 @@ export default function WatchScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24 },
+  content: { padding: 20 },
+  flex: { flex: 1 },
   body: { color: colors.gray, fontSize: 14, lineHeight: 21 },
-  card: { backgroundColor: colors.card, borderRadius: 18, padding: 18, marginBottom: 20 },
-  cardTitle: { color: colors.white, fontSize: 17, fontWeight: '700' },
-  cardHint: { color: colors.gray, fontSize: 13, marginTop: 6, lineHeight: 19 },
-  groupTitle: { color: colors.primary, fontSize: 13, fontWeight: '600', marginTop: 16, marginBottom: 4 },
-  statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 },
-  statLabel: { color: colors.white, fontSize: 14 },
+  card: { backgroundColor: colors.card, borderRadius: 22, padding: 18, marginBottom: 16 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  cardTitle: { color: colors.white, fontSize: 16, fontWeight: '700' },
+  cardHint: { color: colors.gray, fontSize: 12, marginTop: 3, lineHeight: 17 },
+  groupTitle: { color: colors.primary, fontSize: 13, fontWeight: '600', marginTop: 18, marginBottom: 4 },
+  statRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
+  statLabel: { color: colors.white, fontSize: 14, flex: 1 },
   statValue: { color: colors.white, fontSize: 14, fontWeight: '600' },
-  warning: { color: colors.danger, fontSize: 13, lineHeight: 19, marginBottom: 16 },
+  diagHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  verdict: { flexDirection: 'row', gap: 8, backgroundColor: colors.background, borderRadius: 12, padding: 12, marginBottom: 10 },
+  verdictText: { color: colors.white, fontSize: 13, lineHeight: 19, flex: 1 },
+  diagRow: { paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.inputBorder },
+  diagTop: { flexDirection: 'row', justifyContent: 'space-between' },
+  diagType: { color: colors.white, fontSize: 14 },
+  diagCount: { color: colors.gray, fontSize: 13 },
+  good: { color: colors.success },
+  bad: { color: colors.danger },
+  diagSources: { color: colors.gray, fontSize: 12, marginTop: 3 },
   sectionTitle: { color: colors.white, fontSize: 17, fontWeight: '600', marginBottom: 10 },
   step: { color: colors.gray, fontSize: 14, lineHeight: 21, marginBottom: 8 },
-  primaryBtn: { marginTop: 12 },
+  primaryBtn: { marginTop: 8 },
   secondaryBtn: { alignItems: 'center', paddingVertical: 14 },
-  secondaryText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
+  link: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   disconnectText: { color: colors.danger, fontSize: 14, fontWeight: '600' },
   message: { color: colors.white, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 4 },
-  footnote: { color: colors.gray, fontSize: 12, lineHeight: 18, marginTop: 20, textAlign: 'center' },
+  footnote: { color: colors.gray, fontSize: 12, lineHeight: 18, marginTop: 12, textAlign: 'center' },
 });

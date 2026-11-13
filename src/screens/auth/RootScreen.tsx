@@ -2,7 +2,9 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../types/navigation';
+import { Ionicons } from '@expo/vector-icons';
 import AuthButton from '../../components/AuthButton';
+import ProgressRing from '../../components/ProgressRing';
 import colors from '../../theme/colors';
 
 type Props = { navigation: NativeStackNavigationProp<AuthStackParamList, 'Root'> };
@@ -12,16 +14,20 @@ export default function RootScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <View style={styles.logoWrapper}>
-          <View style={styles.tv}>
-            <View style={styles.antennaLeft} />
-            <View style={styles.antennaRight} />
-            <View style={styles.screen}>
-              <Text style={styles.logoText}>CN</Text>
-            </View>
-          </View>
-          <Text style={styles.brand}>CINEMAX</Text>
+          <ProgressRing
+            size={132}
+            stroke={12}
+            rings={[
+              { progress: 0.82, color: colors.steps },
+              { progress: 0.64, color: colors.exercise },
+              { progress: 0.9, color: colors.learning },
+            ]}
+          >
+            <Ionicons name="heart" size={34} color={colors.heart} />
+          </ProgressRing>
+          <Text style={styles.brand}>JING</Text>
           <Text style={styles.subtitle}>
-            Enter your registered{'\n'}Phone Number to Sign Up
+            Health, learning and your Garmin watch,{'\n'}all in one place
           </Text>
         </View>
 
@@ -39,13 +45,13 @@ export default function RootScreen({ navigation }: Props) {
 
           <View style={styles.socialRow}>
             <TouchableOpacity style={[styles.socialBtn, styles.googleBtn]}>
-              <Text style={styles.socialLabel}>G</Text>
+              <Ionicons name="logo-google" size={24} color={colors.background} />
             </TouchableOpacity>
             <TouchableOpacity style={[styles.socialBtn, styles.appleBtn]}>
-              <Text style={styles.socialLabel}></Text>
+              <Ionicons name="logo-apple" size={24} color={colors.white} />
             </TouchableOpacity>
             <TouchableOpacity style={[styles.socialBtn, styles.fbBtn]}>
-              <Text style={styles.socialLabel}>f</Text>
+              <Ionicons name="logo-facebook" size={24} color={colors.white} />
             </TouchableOpacity>
           </View>
         </View>
@@ -58,36 +64,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 32, paddingVertical: 48 },
   logoWrapper: { alignItems: 'center', marginTop: 40 },
-  tv: { alignItems: 'center', marginBottom: 24 },
-  antennaLeft: {
-    position: 'absolute',
-    top: -20,
-    left: 30,
-    width: 3,
-    height: 22,
-    backgroundColor: colors.primary,
-    transform: [{ rotate: '-20deg' }],
-  },
-  antennaRight: {
-    position: 'absolute',
-    top: -20,
-    right: 30,
-    width: 3,
-    height: 22,
-    backgroundColor: colors.primary,
-    transform: [{ rotate: '20deg' }],
-  },
-  screen: {
-    width: 90,
-    height: 72,
-    borderWidth: 3,
-    borderColor: colors.primary,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoText: { color: colors.primary, fontSize: 22, fontWeight: '800' },
-  brand: { color: colors.white, fontSize: 32, fontWeight: '800', letterSpacing: 4, marginTop: 16 },
+  brand: { color: colors.white, fontSize: 34, fontWeight: '800', letterSpacing: 6, marginTop: 28 },
   subtitle: { color: colors.gray, fontSize: 15, textAlign: 'center', marginTop: 10, lineHeight: 22 },
   actions: { gap: 20 },
   loginRow: { color: colors.gray, textAlign: 'center', fontSize: 14 },
@@ -104,5 +81,4 @@ const styles = StyleSheet.create({
   googleBtn: { backgroundColor: colors.white },
   appleBtn: { backgroundColor: '#2C2C3E' },
   fbBtn: { backgroundColor: '#3B5998' },
-  socialLabel: { fontSize: 20, fontWeight: '700' },
 });
