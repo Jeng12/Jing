@@ -1,0 +1,56 @@
+name: Build Android app
+
+# Builds an installable APK. Download it from the run's "Artifacts" section.
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Generate Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # The release variant bundles the JavaScript, so the APK runs without a dev server.
+      # Expo's template signs it with the debug key: fine for installing on your own
+      # phone, not accepted by the Play Store.
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jing-android-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
