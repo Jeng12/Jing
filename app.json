@@ -51,7 +51,8 @@
           "modes": [],
           "neverForLocation": true
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
