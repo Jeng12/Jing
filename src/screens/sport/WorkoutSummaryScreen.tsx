@@ -14,7 +14,7 @@ import ScreenHeader from '../../components/ScreenHeader';
 import Sparkline from '../../components/Sparkline';
 import CoachReportView from '../../components/CoachReportView';
 import { getApiKey } from '../../services/apiKeyStore';
-import { describeClaudeError } from '../../services/claude';
+import { describeAiError, providerForKey } from '../../services/ai';
 import { analyzeWorkout } from '../../services/coach';
 import colors from '../../theme/colors';
 
@@ -53,7 +53,7 @@ export default function WorkoutSummaryScreen({ navigation, route }: Props) {
       const coachReport = await analyzeWorkout(apiKey, workout, data);
       addWorkout({ ...workout, coachReport });
     } catch (e) {
-      setAiError(describeClaudeError(e));
+      setAiError(describeAiError(e, providerForKey(apiKey)));
     } finally {
       setAnalyzing(false);
     }
@@ -163,7 +163,7 @@ export default function WorkoutSummaryScreen({ navigation, route }: Props) {
             ) : analyzing ? (
               <View style={styles.aiLoading}>
                 <ActivityIndicator color={colors.primary} />
-                <Text style={styles.footnote}>Claude is looking at this workout…</Text>
+                <Text style={styles.footnote}>The coach is looking at this workout…</Text>
               </View>
             ) : (
               <TouchableOpacity style={styles.aiButton} onPress={runAnalysis}>

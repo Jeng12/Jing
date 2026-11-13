@@ -8,7 +8,7 @@ import { CoachReport } from '../../types/tracker';
 import { useTracker } from '../../store/TrackerContext';
 import { useSession } from '../../store/SessionContext';
 import { clearApiKey, getApiKey, setApiKey } from '../../services/apiKeyStore';
-import { ChatTurn, describeClaudeError } from '../../services/claude';
+import { ChatTurn, PROVIDER_NAMES, describeAiError, providerForKey } from '../../services/ai';
 import { analyzeRecent, askCoach, questionOnly } from '../../services/coach';
 import { timeAgo } from '../../utils/trackerStats';
 import AuthButton from '../../components/AuthButton';
@@ -42,9 +42,14 @@ export default function CoachScreen({ navigation }: Props) {
       .catch(() => undefined);
   }, []);
 
+  const provider = providerForKey(apiKey);
+  const aiName = provider ? PROVIDER_NAMES[provider] : 'The AI';
+
   const saveKey = async () => {
     const value = keyInput.trim();
-    if (!value.startsWith('sk-ant-')) return setError('That does not look like an Anthropic API key (it starts with sk-ant-).');
+    if (!providerForKey(value)) {
+      return setError('That does not look like a Gemini key (starts with AIza) or an Anthropic key (starts with sk-ant-).');
+    }
     await setApiKey(value);
     setKey(value);
     setKeyInput('');
@@ -65,7 +70,7 @@ export default function CoachScreen({ navigation }: Props) {
       setReport(result);
       AsyncStorage.setItem(REPORT_KEY, JSON.stringify(result)).catch(() => undefined);
     } catch (e) {
-      setError(describeClaudeError(e));
+      setError(describeAiError(e, provider));
     } finally {
       setAnalyzing(false);
     }
@@ -85,7 +90,7 @@ export default function CoachScreen({ navigation }: Props) {
     } catch (e) {
       setHistory(history);
       setQuestion(q);
-      setError(describeClaudeError(e));
+      setError(describeAiError(e, provider));
     } finally {
       setAsking(false);
       setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 100);
@@ -108,18 +113,18 @@ export default function CoachScreen({ navigation }: Props) {
           {!apiKey ? (
             <View style={styles.card}>
               <Ionicons name="sparkles" size={32} color={colors.primary} />
-              <Text style={styles.cardTitle}>Analyse your data with Claude</Text>
+              <Text style={styles.cardTitle}>Analyse your data with AI</Text>
               <Text style={styles.body}>
                 The AI Coach reads your last 14 days of health, workouts and learning, then points out what is going well
                 and what to try next. You can also ask it questions.
               </Text>
               <Text style={styles.body}>
-                It uses your own Anthropic API key. Create one at console.anthropic.com → API keys, then paste it here. Each
-                analysis costs a few cents on your Anthropic account.
+                Paste your own API key. A Gemini key comes from aistudio.google.com → Get API key (it starts with AIza and
+                has a free tier). An Anthropic key for Claude, from console.anthropic.com, also works.
               </Text>
               <AuthInput
-                label="Anthropic API key"
-                placeholder="sk-ant-…"
+                label="Gemini or Anthropic API key"
+                placeholder="AIza… or sk-ant-…"
                 value={keyInput}
                 onChangeText={setKeyInput}
                 autoCapitalize="none"
@@ -128,21 +133,23 @@ export default function CoachScreen({ navigation }: Props) {
               />
               <AuthButton title="Save key" onPress={saveKey} />
               <Text style={styles.privacy}>
-                Your key is stored encrypted on this phone. When you run an analysis, a summary of your recent data is sent
-                to Anthropic to generate it. Nothing is sent until you tap Analyse or Ask.
+                Your key is stored encrypted on this phone. Nothing is sent until you tap Analyse or Ask; then a summary of
+                your last 14 days goes to Google (Gemini) or Anthropic (Claude) to write the answer. Check the provider's terms
+                for how they handle data, especially on free tiers.
               </Text>
             </View>
           ) : (
             <>
               <View style={styles.rowBetween}>
                 <Text style={styles.sectionTitle}>Your last 2 weeks</Text>
-                {report && <Text style={styles.meta}>Updated {timeAgo(report.generatedAt)}</Text>}
+                <Text style={styles.meta}>Using {aiName}</Text>
               </View>
+              {report && <Text style={[styles.meta, styles.updated]}>Updated {timeAgo(report.generatedAt)}</Text>}
 
               {analyzing ? (
                 <View style={[styles.card, styles.center]}>
                   <ActivityIndicator color={colors.primary} />
-                  <Text style={styles.body}>Claude is reading your data… this can take up to a minute.</Text>
+                  <Text style={styles.body}>{aiName} is reading your data… this can take up to a minute.</Text>
                 </View>
               ) : report ? (
                 <CoachReportView report={report} />
@@ -226,6 +233,7 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitle: { color: colors.white, fontSize: 17, fontWeight: '700' },
   meta: { color: colors.gray, fontSize: 12 },
+  updated: { marginTop: -8, marginBottom: 12 },
   analyzeBtn: { marginTop: 14 },
   askTitle: { marginTop: 28, marginBottom: 12 },
   chips: { gap: 8, marginBottom: 8 },

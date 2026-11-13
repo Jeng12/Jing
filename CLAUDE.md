@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, records workouts in Sport mode (timer, GPS distance and pace, live heart rate and zones), shows week-over-week trends, sends a daily summary notification, and has an AI Coach (Claude) that analyses the last two weeks, single workouts, and answers questions. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock and there is no backend: all data stays on the device, except the data summary sent to the Claude API when the user runs the AI Coach with their own API key.
+**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, records workouts in Sport mode (timer, GPS distance and pace, live heart rate and zones), shows week-over-week trends, sends a daily summary notification, and has an AI Coach (Gemini or Claude, picked from the user's API key) that analyses the last two weeks, single workouts, and answers questions. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock and there is no backend: all data stays on the device, except the data summary sent to Gemini or Claude when the user runs the AI Coach with their own API key.
 
 ## Commands
 
@@ -30,7 +30,7 @@ If the web dev server keeps serving old code after edits, restart it with `npx e
 - **react-native-svg** (rings, sparkline), **@expo/vector-icons** (Ionicons)
 - **react-native-health-connect** (Garmin data via Health Connect), **react-native-ble-plx** (live heart rate)
 - **expo-location** (workout GPS, foreground only), **expo-keep-awake** (screen stays on during a workout)
-- **Claude API** (`claude-opus-5-5`) over `fetch` — the official TypeScript SDK states React Native is not supported; **expo-secure-store** holds the user's API key
+- **AI Coach**: **Gemini API** (`gemini-3.8-flash`, falling back to `gemini-flash-latest`) or **Claude API** (`claude-opus-5-5`), both over `fetch` — the Anthropic TypeScript SDK states React Native is not supported; **expo-secure-store** holds the user's API key
 - **expo-notifications**, **@react-native-async-storage/async-storage**
 - **New Architecture** enabled (app.json)
 
@@ -55,8 +55,11 @@ src/
     liveHeartRate.android.ts  # BLE Heart Rate service client (react-native-ble-plx)
     liveHeartRate.ts          # no-op fallback (iOS/web), same exports + shared types
     notifications.ts          # daily summary notification (local only)
-    claude.ts                 # Messages API client: headers, retries, timeout, refusal/truncation checks, readable errors
-    coach.ts                  # AI Coach: data summary, system prompt, report schema, analyze/ask functions
+    ai.ts                     # picks the provider from the key prefix (AIza → Gemini, sk-ant- → Claude), askAI, describeAiError
+    aiTypes.ts                # ChatTurn, AiError, shared POST with timeout + retries
+    gemini.ts                 # Gemini generateContent client: model fallback, JSON schema, safety/finish checks, thought parts filtered
+    claude.ts                 # Claude Messages API client: refusal fallbacks, structured outputs, stop_reason checks
+    coach.ts                  # AI Coach: data summary, system prompt, report schema + validation, analyze/ask functions
     apiKeyStore.ts            # API key in SecureStore (apiKeyStore.web.ts: localStorage)
   utils/
     trackerStats.ts  # pure stats: effectiveHealth, periodTotals, streak, dailyValue, buildSummary, ...
@@ -114,6 +117,8 @@ Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type scr
 
 ### AI Coach
 
+- `services/ai.ts` routes each request by key prefix; `coach.ts` only calls `askAI` and stays provider-neutral. Replies are validated in `parseReport`, so a reply in the wrong shape becomes an error message rather than a broken screen.
+- `services/gemini.ts` posts to `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `x-goog-api-key`, `systemInstruction`, `contents` (assistant → `model` role) and, for reports, `responseMimeType: application/json` + `responseJsonSchema` (with `additionalProperties` removed). A 404 moves on to the next model in `GEMINI_MODELS`; `promptFeedback.blockReason` or a safety-type `finishReason` is a refusal; `MAX_TOKENS` is truncation; an "API key" 400 is an auth error.
 - `services/claude.ts` posts to `https://api.anthropic.com/v1/messages` with `anthropic-version: 2026-10-21`, model `claude-opus-5-5`, `output_config.effort: "medium"`, and server-side refusal fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). It retries 429/5xx/529 twice, times out at 120 s, checks `stop_reason` (`refusal`, `max_tokens`) before reading text blocks, and maps failures to `ClaudeError` kinds with user-facing text in `describeClaudeError`. On web it adds `anthropic-dangerous-direct-browser-access`.
 - `services/coach.ts` builds a compact JSON of the last 14 days (`buildDataContext`; unrecorded fields are left out) and has one system prompt. Reports use structured outputs (`output_config.format` JSON schema → `CoachReport`); the chat is plain text, and the first user turn carries the data so follow-ups keep it.
 - Two-week reports are cached in AsyncStorage (`jing.coach.v1`); workout reports are saved on the workout (`Workout.coachReport`) so they are not requested twice. Nothing is sent until the user taps Analyse or Ask.

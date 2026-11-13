@@ -86,7 +86,7 @@ export default function ProfileScreen({ navigation }: Props) {
             icon="sparkles"
             color={colors.primary}
             label="AI Coach"
-            detail="Analysis and answers from Claude"
+            detail="AI analysis and answers (Gemini or Claude)"
             onPress={() => navigation.navigate('Coach')}
           />
         </View>

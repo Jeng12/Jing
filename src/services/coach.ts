@@ -1,5 +1,5 @@
-import { CoachReport, TrackerData, Workout } from '../types/tracker';
-import { ChatTurn, askClaude } from './claude';
+import { CoachArea, CoachReport, CoachTone, TrackerData, Workout } from '../types/tracker';
+import { AiError, ChatTurn, askAI } from './ai';
 import { dateKey, dayRange, effectiveHealth, learningMinutesOn, topicTotals, watchDay } from '../utils/trackerStats';
 import { SPORTS } from '../utils/sports';
 
@@ -82,14 +82,40 @@ export function buildDataContext(data: TrackerData, name: string): object {
   };
 }
 
+const AREAS: CoachArea[] = ['sleep', 'activity', 'heart', 'workouts', 'learning', 'hydration', 'mood', 'overall'];
+const TONES: CoachTone[] = ['positive', 'watch', 'neutral'];
+
+/** Parses and checks a report, so a reply in the wrong shape shows an error instead of a broken screen. */
 function parseReport(text: string): CoachReport {
-  const parsed = JSON.parse(text) as Omit<CoachReport, 'generatedAt'>;
-  return { ...parsed, generatedAt: new Date().toISOString() };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new AiError('bad_request', 'The reply was not valid JSON');
+  }
+  const r = raw as Partial<Record<keyof CoachReport, unknown>>;
+  const insights = Array.isArray(r.insights) ? r.insights : [];
+  const report: CoachReport = {
+    headline: typeof r.headline === 'string' ? r.headline : '',
+    insights: insights
+      .filter((i): i is Record<string, unknown> => !!i && typeof i === 'object')
+      .map(i => ({
+        area: AREAS.includes(i.area as CoachArea) ? (i.area as CoachArea) : 'overall',
+        tone: TONES.includes(i.tone as CoachTone) ? (i.tone as CoachTone) : 'neutral',
+        title: String(i.title ?? ''),
+        detail: String(i.detail ?? ''),
+      }))
+      .filter(i => i.title || i.detail),
+    actions: Array.isArray(r.actions) ? r.actions.map(String).filter(Boolean) : [],
+    generatedAt: new Date().toISOString(),
+  };
+  if (!report.headline && !report.insights.length) throw new AiError('bad_request', 'The reply was empty');
+  return report;
 }
 
 /** Two-week review across health, workouts and learning. */
 export async function analyzeRecent(apiKey: string, data: TrackerData, name: string): Promise<CoachReport> {
-  const text = await askClaude({
+  const text = await askAI({
     apiKey,
     system: SYSTEM_PROMPT,
     schema: REPORT_SCHEMA,
@@ -119,7 +145,7 @@ export async function analyzeWorkout(apiKey: string, workout: Workout, data: Tra
     maxHeartRateSetting: data.goals.maxHeartRate,
     sleepLastNight: effectiveHealth(data, workout.date).sleepHours || undefined,
   };
-  const text = await askClaude({
+  const text = await askAI({
     apiKey,
     system: SYSTEM_PROMPT,
     schema: REPORT_SCHEMA,
@@ -149,7 +175,7 @@ export async function askCoach(
       ? `My data for the last 14 days:\n${JSON.stringify(buildDataContext(data, name))}\n\nMy question: ${question}`
       : question;
   const userTurn: ChatTurn = { role: 'user', content };
-  const answer = await askClaude({
+  const answer = await askAI({
     apiKey,
     system: `${SYSTEM_PROMPT}\n- Answer the question directly in a short reply (a few sentences or a short list). Use plain text without Markdown headings or tables.`,
     messages: [...history, userTurn],
