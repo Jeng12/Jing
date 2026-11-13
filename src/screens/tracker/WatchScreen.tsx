@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AppScreenProps } from '../../types/navigation';
@@ -29,11 +29,39 @@ const SETUP_STEPS = [
 
 const isGarminSource = (source: string) => /garmin/i.test(source);
 
+/** Plain-text summary the user can send when asking for help. */
+function buildReport(d: WatchDiagnostics | null, errors: string[], lastSyncedAt: string | null): string {
+  const lines = [
+    'Jing watch report',
+    `Android ${Platform.Version} · ${new Date().toISOString()}`,
+    `Last sync: ${lastSyncedAt ?? 'never'}`,
+    `Sync problems: ${errors.length ? errors.join('; ') : 'none'}`,
+  ];
+  if (d) {
+    lines.push(`Health Connect: ${d.status}`, `Allowed: ${d.granted.join(', ') || 'nothing'}`);
+    d.rows.forEach(r =>
+      lines.push(`- ${r.type}: ${r.error ?? `${r.count} records`}${r.sources.length ? ` from ${r.sources.join(', ')}` : ''}`),
+    );
+  }
+  return lines.join('\n');
+}
+
 /** Plain-language reason for missing data, worked out from what Health Connect holds. */
 function explain(d: WatchDiagnostics): { ok: boolean; text: string } {
   if (d.status !== 'available') return { ok: false, text: 'Health Connect is not available on this phone.' };
   if (!d.granted.length) {
     return { ok: false, text: 'Jing is not allowed to read anything yet. Tap Open Health Connect → App permissions → Jing, and allow all.' };
+  }
+  const blocked = d.rows.filter(r => r.error && /not allowed/i.test(r.error)).map(r => r.type);
+  if (blocked.length) {
+    return {
+      ok: false,
+      text: `Jing cannot read ${blocked.join(', ')}. Tap Open Health Connect → App permissions → Jing, and turn on all data types.`,
+    };
+  }
+  const failed = d.rows.filter(r => r.error);
+  if (failed.length) {
+    return { ok: false, text: `Health Connect returned an error for ${failed.map(r => r.type).join(', ')}. Wait a minute and tap Check again.` };
   }
   const anyData = d.rows.some(r => r.count > 0);
   const garmin = d.rows.some(r => r.sources.some(isGarminSource));
@@ -51,7 +79,7 @@ function explain(d: WatchDiagnostics): { ok: boolean; text: string } {
 }
 
 export default function WatchScreen({ navigation }: Props) {
-  const { data, connectWatch, disconnectWatch, syncWatch } = useTracker();
+  const { data, connectWatch, disconnectWatch, syncWatch, watchErrors } = useTracker();
   const { enabled, lastSyncedAt } = data.watchSync;
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -86,9 +114,12 @@ export default function WatchScreen({ navigation }: Props) {
   const connect = () => run(async () => CONNECT_MESSAGES[await connectWatch()]);
   const sync = () =>
     run(async () => {
-      const ok = await syncWatch();
+      const result = await syncWatch();
       await check();
-      return ok ? 'Synced.' : 'Could not read Health Connect. Check that access is still allowed.';
+      if (!result.errors.length) return 'Synced.';
+      return result.ok
+        ? 'Synced, but some data could not be read. Details are at the top.'
+        : 'Could not read Health Connect. Details are at the top.';
     });
 
   const stat = (icon: React.ComponentProps<typeof Ionicons>['name'], color: string, label: string, value?: string) => (
@@ -144,6 +175,20 @@ export default function WatchScreen({ navigation }: Props) {
               )}
             </View>
 
+            {enabled && watchErrors.length > 0 && (
+              <View style={[styles.card, styles.errorCard]}>
+                <View style={styles.errorHead}>
+                  <Ionicons name="alert-circle" size={18} color={colors.danger} />
+                  <Text style={styles.cardTitle}>Could not read</Text>
+                </View>
+                {watchErrors.map(e => (
+                  <Text key={e} style={styles.errorLine}>
+                    {e}
+                  </Text>
+                ))}
+              </View>
+            )}
+
             {enabled && (
               <View style={styles.card}>
                 <View style={styles.diagHead}>
@@ -182,6 +227,13 @@ export default function WatchScreen({ navigation }: Props) {
                   </View>
                 ))}
                 <Text style={styles.footnote}>Last 7 days. Garmin only shares new data after the watch syncs with Garmin Connect.</Text>
+                <TouchableOpacity
+                  style={styles.shareBtn}
+                  onPress={() => Share.share({ message: buildReport(diagnostics, watchErrors, lastSyncedAt) })}
+                >
+                  <Ionicons name="share-outline" size={16} color={colors.primary} />
+                  <Text style={styles.link}>Share report</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -234,6 +286,10 @@ const styles = StyleSheet.create({
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7 },
   statLabel: { color: colors.white, fontSize: 14, flex: 1 },
   statValue: { color: colors.white, fontSize: 14, fontWeight: '600' },
+  errorCard: { borderWidth: 1, borderColor: colors.danger },
+  errorHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  errorLine: { color: colors.white, fontSize: 13, lineHeight: 19, marginTop: 4 },
+  shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14 },
   diagHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   verdict: { flexDirection: 'row', gap: 8, backgroundColor: colors.background, borderRadius: 12, padding: 12, marginBottom: 10 },
   verdictText: { color: colors.white, fontSize: 13, lineHeight: 19, flex: 1 },

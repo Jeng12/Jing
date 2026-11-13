@@ -1,5 +1,5 @@
 import {
-  aggregateRecord,
+  aggregateGroupByDuration,
   getGrantedPermissions,
   getSdkStatus,
   initialize,
@@ -110,82 +110,129 @@ function addTo(map: Record<string, number>, key: string, value: number) {
   map[key] = (map[key] ?? 0) + value;
 }
 
+function message(e: unknown): string {
+  const text = e instanceof Error ? e.message : String(e);
+  if (/rate.?limit/i.test(text)) return 'Health Connect is limiting requests; it will retry shortly';
+  if (/SecurityException|permission/i.test(text)) return 'Not allowed in Health Connect';
+  return text.split('\n')[0].slice(0, 160);
+}
+
+/**
+ * Totals per local day from Health Connect's own de-duplicated aggregate, in one call.
+ * Used when Garmin has no records of that type, so mixed sources are not double counted.
+ */
+async function dailyAggregate(
+  recordType: 'Steps' | 'ExerciseSession',
+  start: Date,
+  end: Date,
+): Promise<Record<string, number>> {
+  const groups = await aggregateGroupByDuration({
+    recordType,
+    timeRangeFilter: between(start, end),
+    timeRangeSlicer: { duration: 'DAYS', length: 1 },
+  });
+  const byDay: Record<string, number> = {};
+  groups.forEach(g => {
+    const result = g.result as { COUNT_TOTAL?: number; EXERCISE_DURATION_TOTAL?: { inSeconds?: number } };
+    const value =
+      recordType === 'Steps' ? result.COUNT_TOTAL ?? 0 : (result.EXERCISE_DURATION_TOTAL?.inSeconds ?? 0) / 60;
+    if (value) byDay[localKey(g.startTime)] = value;
+  });
+  return byDay;
+}
+
 // ---------- reading ----------
 
-export async function readWatchDays(dayKeys: string[]): Promise<WatchDay[]> {
-  if (!dayKeys.length || !(await initialize())) return [];
+export interface WatchReadResult {
+  days: WatchDay[];
+  /** One line per data type that could not be read, e.g. "Sleep: Not allowed in Health Connect". */
+  errors: string[];
+}
+
+export async function readWatchDays(dayKeys: string[]): Promise<WatchReadResult> {
+  if (!dayKeys.length) return { days: [], errors: [] };
+  if (!(await initialize())) throw new Error('Health Connect could not start on this phone');
+
   const rangeStart = dayStart(dayKeys[0]);
   const rangeEnd = dayEnd(dayKeys[dayKeys.length - 1]);
   // Sleep is filed under the day it ended, so look back one more night.
   const sleepStart = new Date(rangeStart);
   sleepStart.setDate(sleepStart.getDate() - 1);
+  const errors: string[] = [];
 
-  const [steps, exercise, sleep, resting, heart] = await Promise.all([
-    attempt(() => readAll('Steps', rangeStart, rangeEnd)),
-    attempt(() => readAll('ExerciseSession', rangeStart, rangeEnd)),
-    attempt(() => readAll('SleepSession', sleepStart, rangeEnd)),
-    attempt(() => readAll('RestingHeartRate', rangeStart, rangeEnd)),
-    attempt(() => readAll('HeartRate', dayStart(dayKeys[dayKeys.length - 1]), rangeEnd)),
+  /** Runs one data type's read; a failure is recorded and leaves the other types untouched. */
+  async function part<T>(label: string, read: () => Promise<T>, empty: T): Promise<T> {
+    try {
+      return await read();
+    } catch (e) {
+      errors.push(`${label}: ${message(e)}`);
+      return empty;
+    }
+  }
+
+  const [stepsByDay, exerciseByDay, sleepByDay, resting, latest] = await Promise.all([
+    part('Steps', async () => {
+      const pick = preferGarmin(await readAll('Steps', rangeStart, rangeEnd));
+      if (!pick.garmin && pick.records.length) return dailyAggregate('Steps', rangeStart, rangeEnd);
+      const byDay: Record<string, number> = {};
+      pick.records.forEach(r => addTo(byDay, localKey(r.startTime), r.count));
+      return byDay;
+    }, {} as Record<string, number>),
+
+    part('Activities', async () => {
+      const pick = preferGarmin(await readAll('ExerciseSession', rangeStart, rangeEnd));
+      if (!pick.garmin && pick.records.length) return dailyAggregate('ExerciseSession', rangeStart, rangeEnd);
+      const byDay: Record<string, number> = {};
+      pick.records.forEach(r => addTo(byDay, localKey(r.startTime), ms(r.startTime, r.endTime) / 60_000));
+      return byDay;
+    }, {} as Record<string, number>),
+
+    part('Sleep', async () => {
+      const byDay: Record<string, number> = {};
+      preferGarmin(await readAll('SleepSession', sleepStart, rangeEnd)).records.forEach(s => {
+        const awake = (s.stages ?? [])
+          .filter(stage => AWAKE_STAGES.includes(stage.stage))
+          .reduce((sum, stage) => sum + ms(stage.startTime, stage.endTime), 0);
+        addTo(byDay, localKey(s.endTime), Math.max(0, ms(s.startTime, s.endTime) - awake) / 3_600_000);
+      });
+      return byDay;
+    }, {} as Record<string, number>),
+
+    part('Resting heart rate', async () => {
+      const sum: Record<string, number> = {};
+      const count: Record<string, number> = {};
+      preferGarmin(await readAll('RestingHeartRate', rangeStart, rangeEnd)).records.forEach(r => {
+        addTo(sum, localKey(r.time), r.beatsPerMinute);
+        addTo(count, localKey(r.time), 1);
+      });
+      return { sum, count };
+    }, { sum: {} as Record<string, number>, count: {} as Record<string, number> }),
+
+    part('Heart rate', async () => {
+      let newest: { bpm: number; time: string } | undefined;
+      const todayStart = dayStart(dayKeys[dayKeys.length - 1]);
+      preferGarmin(await readAll('HeartRate', todayStart, rangeEnd)).records.forEach(r =>
+        (r.samples ?? []).forEach(sample => {
+          if (!newest || sample.time > newest.time) newest = { bpm: sample.beatsPerMinute, time: sample.time };
+        }),
+      );
+      return newest;
+    }, undefined as { bpm: number; time: string } | undefined),
   ]);
 
-  const stepsByDay: Record<string, number> = {};
-  const stepPick = preferGarmin(steps ?? []);
-  stepPick.records.forEach(r => addTo(stepsByDay, localKey(r.startTime), r.count));
-
-  const exerciseByDay: Record<string, number> = {};
-  const exercisePick = preferGarmin(exercise ?? []);
-  exercisePick.records.forEach(r => addTo(exerciseByDay, localKey(r.startTime), ms(r.startTime, r.endTime) / 60_000));
-
-  const sleepByDay: Record<string, number> = {};
-  preferGarmin(sleep ?? []).records.forEach(s => {
-    const awake = (s.stages ?? [])
-      .filter(stage => AWAKE_STAGES.includes(stage.stage))
-      .reduce((sum, stage) => sum + ms(stage.startTime, stage.endTime), 0);
-    addTo(sleepByDay, localKey(s.endTime), Math.max(0, ms(s.startTime, s.endTime) - awake) / 3_600_000);
+  const days = dayKeys.map(date => {
+    const day: WatchDay = { date };
+    if (stepsByDay[date]) day.steps = Math.round(stepsByDay[date]);
+    if (exerciseByDay[date]) day.exerciseMinutes = Math.round(exerciseByDay[date]);
+    if (sleepByDay[date]) day.sleepHours = Math.round(sleepByDay[date] * 10) / 10;
+    if (resting.count[date]) day.restingHeartRate = Math.round(resting.sum[date] / resting.count[date]);
+    if (latest && localKey(latest.time) === date) {
+      day.latestHeartRate = Math.round(latest.bpm);
+      day.latestHeartRateAt = latest.time;
+    }
+    return day;
   });
-
-  const restingSum: Record<string, number> = {};
-  const restingCount: Record<string, number> = {};
-  preferGarmin(resting ?? []).records.forEach(r => {
-    addTo(restingSum, localKey(r.time), r.beatsPerMinute);
-    addTo(restingCount, localKey(r.time), 1);
-  });
-
-  let latest: { bpm: number; time: string } | undefined;
-  preferGarmin(heart ?? []).records.forEach(r =>
-    r.samples.forEach(sample => {
-      if (!latest || sample.time > latest.time) latest = { bpm: sample.beatsPerMinute, time: sample.time };
-    }),
-  );
-
-  return Promise.all(
-    dayKeys.map(async date => {
-      const day: WatchDay = { date };
-      let daySteps: number | undefined = stepsByDay[date];
-      let dayExercise: number | undefined = exerciseByDay[date];
-      // With no Garmin records, mixed sources would double count: let Health Connect's
-      // own priority list de-duplicate them instead.
-      if (!stepPick.garmin && steps?.length) {
-        const agg = await attempt(() => aggregateRecord({ recordType: 'Steps', timeRangeFilter: between(dayStart(date), dayEnd(date)) }));
-        daySteps = agg?.COUNT_TOTAL;
-      }
-      if (!exercisePick.garmin && exercise?.length) {
-        const agg = await attempt(() =>
-          aggregateRecord({ recordType: 'ExerciseSession', timeRangeFilter: between(dayStart(date), dayEnd(date)) }),
-        );
-        dayExercise = agg ? agg.EXERCISE_DURATION_TOTAL.inSeconds / 60 : undefined;
-      }
-      if (daySteps) day.steps = Math.round(daySteps);
-      if (dayExercise) day.exerciseMinutes = Math.round(dayExercise);
-      if (sleepByDay[date]) day.sleepHours = Math.round(sleepByDay[date] * 10) / 10;
-      if (restingCount[date]) day.restingHeartRate = Math.round(restingSum[date] / restingCount[date]);
-      if (latest && localKey(latest.time) === date) {
-        day.latestHeartRate = Math.round(latest.bpm);
-        day.latestHeartRateAt = latest.time;
-      }
-      return day;
-    }),
-  );
+  return { days, errors };
 }
 
 // ---------- diagnostics ----------
@@ -221,7 +268,7 @@ export async function diagnoseWatch(): Promise<WatchDiagnostics> {
         const records = (await readAll(type, start, end)) as WithOrigin[];
         return { type: label, count: records.length, sources: [...new Set(records.map(originOf))] };
       } catch (e) {
-        return { type: label, count: 0, sources: [], error: e instanceof Error ? e.message : String(e) };
+        return { type: label, count: 0, sources: [], error: message(e) };
       }
     }),
   );

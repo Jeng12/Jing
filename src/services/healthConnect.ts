@@ -15,8 +15,14 @@ export async function requestWatchAccess(): Promise<boolean> {
   return false;
 }
 
-export async function readWatchDays(_dayKeys: string[]): Promise<WatchDay[]> {
-  return [];
+export interface WatchReadResult {
+  days: WatchDay[];
+  /** One line per data type that could not be read, e.g. "Sleep: Not allowed in Health Connect". */
+  errors: string[];
+}
+
+export async function readWatchDays(_dayKeys: string[]): Promise<WatchReadResult> {
+  return { days: [], errors: [] };
 }
 
 export async function diagnoseWatch(): Promise<WatchDiagnostics> {

@@ -32,6 +32,8 @@ const DEFAULT_DATA: TrackerData = {
 const WATCH_SYNC_DAYS = 14;
 /** Garmin Connect pushes new watch data to Health Connect every few minutes; check this often while open. */
 const WATCH_POLL_MS = 60_000;
+/** Minute-by-minute checks only re-read today and last night, to stay well inside Health Connect's rate limits. */
+const WATCH_POLL_DAYS = 2;
 
 interface TrackerContextValue {
   data: TrackerData;
@@ -47,8 +49,10 @@ interface TrackerContextValue {
   /** Asks for Health Connect access, then pulls the watch data in. */
   connectWatch: () => Promise<WatchConnectResult>;
   disconnectWatch: () => void;
-  /** Resolves false when Health Connect could not be read. */
-  syncWatch: () => Promise<boolean>;
+  /** Reads the last `days` days from Health Connect (default 14); `ok` is false when nothing could be read. */
+  syncWatch: (days?: number) => Promise<{ ok: boolean; errors: string[] }>;
+  /** Problems from the most recent sync, one line per data type; empty when everything was read. */
+  watchErrors: string[];
 }
 
 const TrackerContext = createContext<TrackerContextValue | null>(null);
@@ -110,22 +114,29 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
-  const syncWatch = useCallback(async () => {
+  const [watchErrors, setWatchErrors] = useState<string[]>([]);
+
+  const syncWatch = useCallback(async (dayCount: number = WATCH_SYNC_DAYS) => {
     let days: WatchDay[];
+    let errors: string[];
     try {
-      days = await readWatchDays(dayRange(WATCH_SYNC_DAYS));
-    } catch {
-      return false;
+      ({ days, errors } = await readWatchDays(dayRange(dayCount)));
+    } catch (e) {
+      const errorList = [e instanceof Error ? e.message : String(e)];
+      setWatchErrors(errorList);
+      return { ok: false, errors: errorList };
     }
+    setWatchErrors(errors);
     setData(prev => {
       if (!prev.watchSync.enabled) return prev;
       const watch = { ...prev.watch };
       days.forEach(day => {
-        watch[day.date] = day;
+        // If a type failed this time, keep what was read for it before.
+        watch[day.date] = errors.length ? { ...prev.watch[day.date], ...day } : day;
       });
       return { ...prev, watch, watchSync: { enabled: true, lastSyncedAt: new Date().toISOString() } };
     });
-    return true;
+    return { ok: errors.length < 5, errors };
   }, []);
 
   const connectWatch = useCallback(async (): Promise<WatchConnectResult> => {
@@ -144,6 +155,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   }, [syncWatch]);
 
   const disconnectWatch = useCallback(() => {
+    setWatchErrors([]);
     setData(prev => ({ ...prev, watch: {}, watchSync: { enabled: false, lastSyncedAt: null } }));
   }, []);
 
@@ -154,7 +166,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     let timer: ReturnType<typeof setInterval> | null = null;
     const start = () => {
       syncWatch();
-      timer ??= setInterval(syncWatch, WATCH_POLL_MS);
+      timer ??= setInterval(() => syncWatch(WATCH_POLL_DAYS), WATCH_POLL_MS);
     };
     const stop = () => {
       if (timer) clearInterval(timer);
@@ -186,6 +198,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       connectWatch,
       disconnectWatch,
       syncWatch,
+      watchErrors,
     }),
     [
       data,
@@ -200,6 +213,7 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       connectWatch,
       disconnectWatch,
       syncWatch,
+      watchErrors,
     ],
   );
 
