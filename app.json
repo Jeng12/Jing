@@ -18,7 +18,8 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#14142A"
+        "backgroundColor": "#14142A",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.jeng12.jing",

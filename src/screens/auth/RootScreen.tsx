@@ -19,8 +19,8 @@ export default function RootScreen({ navigation }: Props) {
             stroke={12}
             rings={[
               { progress: 0.82, color: colors.steps },
-              { progress: 0.64, color: colors.exercise },
-              { progress: 0.9, color: colors.learning },
+              { progress: 0.62, color: colors.exercise },
+              { progress: 0.74, color: colors.learning },
             ]}
           >
             <Ionicons name="heart" size={34} color={colors.heart} />
