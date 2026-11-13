@@ -1,7 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { HealthLog, ProgressSummary, ReminderSettings, TrackerData } from '../types/tracker';
-import { buildSummary, dateKey, emptyHealth } from '../utils/trackerStats';
+import {
+  HealthLog,
+  ProgressSummary,
+  ReminderSettings,
+  TrackerData,
+  WatchConnectResult,
+  WatchDay,
+} from '../types/tracker';
+import { AppState } from 'react-native';
+import { buildSummary, dateKey, dayRange, emptyHealth } from '../utils/trackerStats';
+import { getWatchAvailability, readWatchDays, requestWatchAccess } from '../services/healthConnect';
 import {
   cancelDailySummary,
   ensureNotificationPermission,
@@ -13,9 +22,13 @@ const STORAGE_KEY = 'jing.tracker.v1';
 const DEFAULT_DATA: TrackerData = {
   sessions: [],
   health: {},
-  goals: { learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
+  goals: { steps: 8000, learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
   reminder: { enabled: false, hour: 20, minute: 0 },
+  watch: {},
+  watchSync: { enabled: false, lastSyncedAt: null },
 };
+
+const WATCH_SYNC_DAYS = 14;
 
 interface TrackerContextValue {
   data: TrackerData;
@@ -27,6 +40,11 @@ interface TrackerContextValue {
   healthFor: (date?: string) => HealthLog;
   /** Resolves false when turning on fails because notification permission was not granted. */
   setReminder: (reminder: ReminderSettings) => Promise<boolean>;
+  /** Asks for Health Connect access, then pulls the watch data in. */
+  connectWatch: () => Promise<WatchConnectResult>;
+  disconnectWatch: () => void;
+  /** Resolves false when Health Connect could not be read. */
+  syncWatch: () => Promise<boolean>;
 }
 
 const TrackerContext = createContext<TrackerContextValue | null>(null);
@@ -38,7 +56,9 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
       .then(raw => {
-        if (raw) setData({ ...DEFAULT_DATA, ...(JSON.parse(raw) as Partial<TrackerData>) });
+        if (!raw) return;
+        const saved = JSON.parse(raw) as Partial<TrackerData>;
+        setData({ ...DEFAULT_DATA, ...saved, goals: { ...DEFAULT_DATA.goals, ...saved.goals } });
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
@@ -78,9 +98,81 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
+  const syncWatch = useCallback(async () => {
+    let days: WatchDay[];
+    try {
+      days = await readWatchDays(dayRange(WATCH_SYNC_DAYS));
+    } catch {
+      return false;
+    }
+    setData(prev => {
+      if (!prev.watchSync.enabled) return prev;
+      const watch = { ...prev.watch };
+      days.forEach(day => {
+        watch[day.date] = day;
+      });
+      return { ...prev, watch, watchSync: { enabled: true, lastSyncedAt: new Date().toISOString() } };
+    });
+    return true;
+  }, []);
+
+  const connectWatch = useCallback(async (): Promise<WatchConnectResult> => {
+    const availability = await getWatchAvailability();
+    if (availability !== 'available') return availability;
+    let granted = false;
+    try {
+      granted = await requestWatchAccess();
+    } catch {
+      granted = false;
+    }
+    if (!granted) return 'denied';
+    setData(prev => ({ ...prev, watchSync: { ...prev.watchSync, enabled: true } }));
+    await syncWatch();
+    return 'connected';
+  }, [syncWatch]);
+
+  const disconnectWatch = useCallback(() => {
+    setData(prev => ({ ...prev, watch: {}, watchSync: { enabled: false, lastSyncedAt: null } }));
+  }, []);
+
+  // Refresh watch data on launch and whenever the app returns to the foreground.
+  const watchEnabled = data.watchSync.enabled;
+  useEffect(() => {
+    if (!loaded || !watchEnabled) return;
+    syncWatch();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') syncWatch();
+    });
+    return () => sub.remove();
+  }, [loaded, watchEnabled, syncWatch]);
+
   const value = useMemo(
-    () => ({ data, loaded, summary, addSession, removeSession, saveHealth, healthFor, setReminder }),
-    [data, loaded, summary, addSession, removeSession, saveHealth, healthFor, setReminder],
+    () => ({
+      data,
+      loaded,
+      summary,
+      addSession,
+      removeSession,
+      saveHealth,
+      healthFor,
+      setReminder,
+      connectWatch,
+      disconnectWatch,
+      syncWatch,
+    }),
+    [
+      data,
+      loaded,
+      summary,
+      addSession,
+      removeSession,
+      saveHealth,
+      healthFor,
+      setReminder,
+      connectWatch,
+      disconnectWatch,
+      syncWatch,
+    ],
   );
 
   return <TrackerContext.Provider value={value}>{children}</TrackerContext.Provider>;

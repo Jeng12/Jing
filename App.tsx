@@ -20,6 +20,7 @@ import TrackerScreen from './src/screens/tracker/TrackerScreen';
 import LogLearningScreen from './src/screens/tracker/LogLearningScreen';
 import LogHealthScreen from './src/screens/tracker/LogHealthScreen';
 import SummaryScreen from './src/screens/tracker/SummaryScreen';
+import WatchScreen from './src/screens/tracker/WatchScreen';
 import { TrackerProvider } from './src/store/TrackerContext';
 
 import {
@@ -44,6 +45,7 @@ function TrackerNavigator() {
       <TrackerStack.Screen name="LogLearning" component={LogLearningScreen} />
       <TrackerStack.Screen name="LogHealth" component={LogHealthScreen} />
       <TrackerStack.Screen name="Summary" component={SummaryScreen} />
+      <TrackerStack.Screen name="Watch" component={WatchScreen} />
     </TrackerStack.Navigator>
   );
 }

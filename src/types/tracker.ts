@@ -13,7 +13,24 @@ export interface HealthLog {
   mood: number; // 1 (bad) – 5 (great), 0 = not set
 }
 
+/** One day of data read from the watch via Health Connect. Missing fields were not shared. */
+export interface WatchDay {
+  date: string; // local YYYY-MM-DD
+  steps?: number;
+  sleepHours?: number;
+  exerciseMinutes?: number;
+  restingHeartRate?: number;
+}
+
+export interface WatchSync {
+  enabled: boolean;
+  lastSyncedAt: string | null; // ISO timestamp
+}
+
+export type WatchConnectResult = 'connected' | 'denied' | 'needs-update' | 'unavailable';
+
 export interface TrackerGoals {
+  steps: number;
   learningMinutes: number;
   waterGlasses: number;
   sleepHours: number;
@@ -31,6 +48,8 @@ export interface TrackerData {
   health: Record<string, HealthLog>;
   goals: TrackerGoals;
   reminder: ReminderSettings;
+  watch: Record<string, WatchDay>;
+  watchSync: WatchSync;
 }
 
 export interface ProgressSummary {

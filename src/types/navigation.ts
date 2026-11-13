@@ -26,6 +26,7 @@ export type TrackerStackParamList = {
   LogLearning: undefined;
   LogHealth: undefined;
   Summary: undefined;
+  Watch: undefined;
 };
 
 export type ProfileStackParamList = {

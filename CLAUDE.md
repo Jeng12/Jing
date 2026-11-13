@@ -75,7 +75,7 @@ MainTabs (BottomTabs)             ← `Main` route of AuthStack, reached from Lo
   Home tab   → HomeNavigator (NativeStack)
                   HomeMain → Detail
   Progress   → TrackerNavigator (NativeStack)
-                  TrackerMain → LogLearning / LogHealth / Summary
+                  TrackerMain → LogLearning / LogHealth / Summary / Watch
   Search tab → SearchScreen
   WatchList  → (placeholder, no screen yet)
   Profile    → ProfileNavigator (NativeStack)
@@ -119,8 +119,13 @@ The Progress tab tracks learning sessions and daily health (water, sleep, exerci
 - `src/store/TrackerContext.tsx` — `TrackerProvider` / `useTracker()`; persists to AsyncStorage (`jing.tracker.v1`) and reschedules the daily notification whenever data changes
 - `src/utils/trackerStats.ts` — pure stats: daily goal progress, 7-day totals vs the previous 7 days, streak, `buildSummary()`
 - `src/services/notifications.ts` — `expo-notifications` wrapper (permission, daily summary, send-now). Local notifications only; a no-op on web
-- `src/screens/tracker/` — `TrackerScreen` (dashboard), `LogLearningScreen`, `LogHealthScreen`, `SummaryScreen` (summary + reminder settings)
+- `src/services/healthConnect.android.ts` — reads Garmin watch data (steps, sleep, exercise, resting heart rate) from Android Health Connect via `react-native-health-connect`; `healthConnect.ts` is the no-op fallback for iOS/web with the same exports
+- `src/screens/tracker/` — `TrackerScreen` (dashboard), `LogLearningScreen`, `LogHealthScreen`, `SummaryScreen` (summary + reminder settings), `WatchScreen` (connect / sync the watch)
 - `src/components/ScreenHeader.tsx`, `Stepper.tsx` — back-arrow header and −/+ number row
+
+Watch data is stored separately (`TrackerData.watch`) and merged at read time by `effectiveHealth()` — a manually entered value always wins, and the streak counts manual logs only. It syncs the last 14 days on launch, on returning to the foreground, and on "Sync now".
+
+Health Connect needs native code: it does not run in Expo Go. Build with `npx expo run:android` or EAS (the config plugins in `app.json` set the health permissions and `minSdkVersion` 26).
 
 Unlike the movie data, tracker data is real user input, not mocked. Extra theme tokens: `Colors.success`, `Colors.danger`.
 

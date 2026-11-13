@@ -1,4 +1,4 @@
-import { HealthLog, ProgressSummary, TrackerData } from '../types/tracker';
+import { HealthLog, ProgressSummary, TrackerData, WatchDay } from '../types/tracker';
 
 export function dateKey(d: Date = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -21,6 +21,21 @@ export function emptyHealth(date: string): HealthLog {
   return { date, waterGlasses: 0, sleepHours: 0, exerciseMinutes: 0, mood: 0 };
 }
 
+/** Health for a day with watch data filling in whatever was not entered by hand. */
+export function effectiveHealth(data: TrackerData, date: string): HealthLog {
+  const manual = data.health[date] ?? emptyHealth(date);
+  const watch = data.watchSync.enabled ? data.watch[date] : undefined;
+  return {
+    ...manual,
+    sleepHours: manual.sleepHours || watch?.sleepHours || 0,
+    exerciseMinutes: manual.exerciseMinutes || watch?.exerciseMinutes || 0,
+  };
+}
+
+export function watchDay(data: TrackerData, date: string): WatchDay | undefined {
+  return data.watchSync.enabled ? data.watch[date] : undefined;
+}
+
 export function learningMinutesOn(data: TrackerData, date: string): number {
   return data.sessions.filter(s => s.date === date).reduce((sum, s) => sum + s.minutes, 0);
 }
@@ -30,11 +45,15 @@ export interface PeriodTotals {
   exerciseMinutes: number;
   sleepAvg: number;
   waterAvg: number;
+  stepsAvg: number;
+  restingHeartRateAvg: number;
   activeDays: number;
 }
 
 export function periodTotals(data: TrackerData, days: string[]): PeriodTotals {
-  const logs = days.map(d => data.health[d]).filter((h): h is HealthLog => !!h);
+  const logs = days.map(d => effectiveHealth(data, d));
+  const watch = days.map(d => watchDay(data, d));
+  const present = (values: (number | undefined)[]) => values.filter((v): v is number => !!v);
   const slept = logs.filter(h => h.sleepHours > 0);
   const drank = logs.filter(h => h.waterGlasses > 0);
   const avg = (values: number[]) =>
@@ -44,10 +63,13 @@ export function periodTotals(data: TrackerData, days: string[]): PeriodTotals {
     exerciseMinutes: logs.reduce((sum, h) => sum + h.exerciseMinutes, 0),
     sleepAvg: avg(slept.map(h => h.sleepHours)),
     waterAvg: avg(drank.map(h => h.waterGlasses)),
+    stepsAvg: avg(present(watch.map(w => w?.steps))),
+    restingHeartRateAvg: avg(present(watch.map(w => w?.restingHeartRate))),
     activeDays: days.filter(d => isActiveDay(data, d)).length,
   };
 }
 
+/** A day counts toward the streak only when something was logged by hand, not from the watch. */
 function isActiveDay(data: TrackerData, date: string): boolean {
   const h = data.health[date];
   const hasHealth = !!h && (h.waterGlasses > 0 || h.sleepHours > 0 || h.exerciseMinutes > 0 || h.mood > 0);
@@ -73,7 +95,7 @@ export function currentStreak(data: TrackerData): number {
 }
 
 export interface GoalProgress {
-  key: 'learning' | 'water' | 'sleep' | 'exercise';
+  key: 'learning' | 'water' | 'sleep' | 'exercise' | 'steps';
   label: string;
   icon: string;
   value: number;
@@ -84,7 +106,7 @@ export interface GoalProgress {
 
 export function todayProgress(data: TrackerData): GoalProgress[] {
   const today = dateKey();
-  const h = data.health[today] ?? emptyHealth(today);
+  const h = effectiveHealth(data, today);
   const row = (
     key: GoalProgress['key'],
     label: string,
@@ -101,12 +123,16 @@ export function todayProgress(data: TrackerData): GoalProgress[] {
     unit,
     ratio: goal > 0 ? Math.min(value / goal, 1) : 0,
   });
-  return [
+  const rows = [
     row('learning', 'Learning', '📚', learningMinutesOn(data, today), data.goals.learningMinutes, 'min'),
     row('exercise', 'Exercise', '🏃', h.exerciseMinutes, data.goals.exerciseMinutes, 'min'),
     row('sleep', 'Sleep', '😴', h.sleepHours, data.goals.sleepHours, 'h'),
     row('water', 'Water', '💧', h.waterGlasses, data.goals.waterGlasses, 'glasses'),
   ];
+  if (data.watchSync.enabled) {
+    rows.push(row('steps', 'Steps', '👟', data.watch[today]?.steps ?? 0, data.goals.steps, 'steps'));
+  }
+  return rows;
 }
 
 export function todayScore(data: TrackerData): number {
@@ -135,6 +161,14 @@ export function buildSummary(data: TrackerData): ProgressSummary {
     `🏃 Exercise: ${thisWeek.exerciseMinutes} min (${formatChange(pctChange(thisWeek.exerciseMinutes, lastWeek.exerciseMinutes))})`,
     `😴 Sleep: ${round1(thisWeek.sleepAvg)} h avg (${formatChange(pctChange(thisWeek.sleepAvg, lastWeek.sleepAvg))})`,
     `💧 Water: ${round1(thisWeek.waterAvg)} glasses avg (${formatChange(pctChange(thisWeek.waterAvg, lastWeek.waterAvg))})`,
+    ...(data.watchSync.enabled
+      ? [
+          `👟 Steps: ${Math.round(thisWeek.stepsAvg)} avg (${formatChange(pctChange(thisWeek.stepsAvg, lastWeek.stepsAvg))})`,
+          ...(thisWeek.restingHeartRateAvg
+            ? [`❤️ Resting heart rate: ${Math.round(thisWeek.restingHeartRateAvg)} bpm avg`]
+            : []),
+        ]
+      : []),
     `🔥 Streak: ${streak} day${streak === 1 ? '' : 's'} · active ${thisWeek.activeDays}/7 days`,
   ];
 

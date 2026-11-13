@@ -6,6 +6,8 @@ import { TrackerStackParamList } from '../../types/navigation';
 import { useTracker } from '../../store/TrackerContext';
 import {
   currentStreak,
+  GoalProgress,
+  watchDay,
   dayRange,
   learningMinutesOn,
   pctChange,
@@ -25,8 +27,17 @@ function weekdayLabel(key: string): string {
   return WEEKDAYS[new Date(y, m - 1, d).getDay()];
 }
 
-function TrendCard({ icon, label, value, change }: { icon: string; label: string; value: string; change: number | null }) {
-  const trendStyle = change === null || change === 0 ? styles.trendFlat : change > 0 ? styles.trendUp : styles.trendDown;
+interface TrendCardProps {
+  icon: string;
+  label: string;
+  value: string;
+  change: number | null;
+  /** For measures where a rise is not simply "better" (e.g. heart rate): no green/red. */
+  neutral?: boolean;
+}
+
+function TrendCard({ icon, label, value, change, neutral }: TrendCardProps) {
+  const trendStyle = neutral || change === null || change === 0 ? styles.trendFlat : change > 0 ? styles.trendUp : styles.trendDown;
   const trendText =
     change === null ? 'No data last week' : change === 0 ? 'Same as last week' : `${change > 0 ? '▲' : '▼'} ${Math.abs(change)}% vs last week`;
   return (
@@ -51,6 +62,13 @@ export default function TrackerScreen({ navigation }: Props) {
   const dailyLearning = days.map(d => learningMinutesOn(data, d));
   const chartMax = Math.max(data.goals.learningMinutes, ...dailyLearning);
   const round1 = (n: number) => String(Math.round(n * 10) / 10);
+  const today = days[days.length - 1];
+  const manualToday = data.health[today];
+  const watchToday = watchDay(data, today);
+  const isFromWatch = (key: GoalProgress['key']) =>
+    key === 'steps' ||
+    (key === 'sleep' && !manualToday?.sleepHours && !!watchToday?.sleepHours) ||
+    (key === 'exercise' && !manualToday?.exerciseMinutes && !!watchToday?.exerciseMinutes);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -62,6 +80,13 @@ export default function TrackerScreen({ navigation }: Props) {
               {new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
             </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.bellBtn, styles.watchBtn]}
+            onPress={() => navigation.navigate('Watch')}
+            accessibilityLabel="Garmin watch"
+          >
+            <Text style={styles.bellIcon}>⌚</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.bellBtn}
             onPress={() => navigation.navigate('Summary')}
@@ -91,6 +116,7 @@ export default function TrackerScreen({ navigation }: Props) {
                 </Text>
                 <Text style={styles.goalValue}>
                   {round1(r.value)} / {r.goal} {r.unit}
+                  {isFromWatch(r.key) ? ' ⌚' : ''}
                 </Text>
               </View>
               <View style={styles.track}>
@@ -135,6 +161,23 @@ export default function TrackerScreen({ navigation }: Props) {
             value={`${round1(thisWeek.waterAvg)} glasses`}
             change={pctChange(thisWeek.waterAvg, lastWeek.waterAvg)}
           />
+          {data.watchSync.enabled && (
+            <>
+              <TrendCard
+                icon="👟"
+                label="Steps avg"
+                value={`${Math.round(thisWeek.stepsAvg)}`}
+                change={pctChange(thisWeek.stepsAvg, lastWeek.stepsAvg)}
+              />
+              <TrendCard
+                icon="❤️"
+                label="Resting HR avg"
+                value={thisWeek.restingHeartRateAvg ? `${Math.round(thisWeek.restingHeartRateAvg)} bpm` : '—'}
+                change={pctChange(thisWeek.restingHeartRateAvg, lastWeek.restingHeartRateAvg)}
+                neutral
+              />
+            </>
+          )}
         </View>
 
         <Text style={styles.sectionTitle}>Learning minutes per day</Text>
@@ -175,6 +218,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  watchBtn: { marginRight: 10 },
   bellIcon: { fontSize: 20 },
   card: { backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 16 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },

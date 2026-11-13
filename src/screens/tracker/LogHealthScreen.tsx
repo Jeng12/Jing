@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TrackerStackParamList } from '../../types/navigation';
 import { useTracker } from '../../store/TrackerContext';
+import { watchDay } from '../../utils/trackerStats';
 import AuthButton from '../../components/AuthButton';
 import ScreenHeader from '../../components/ScreenHeader';
 import Stepper from '../../components/Stepper';
@@ -14,8 +15,11 @@ type Props = { navigation: NativeStackNavigationProp<TrackerStackParamList, 'Log
 const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
 
 export default function LogHealthScreen({ navigation }: Props) {
-  const { healthFor, saveHealth } = useTracker();
+  const { data, healthFor, saveHealth } = useTracker();
   const [log, setLog] = useState(() => healthFor());
+  const watch = watchDay(data, log.date);
+  const watchHint = (value: number | undefined, unit: string, manual: number) =>
+    value ? ` · ⌚ ${value} ${unit}${'\n'}${manual ? 'replaced by your entry' : 'used until you enter a value'}` : '';
 
   const save = () => {
     saveHealth(log);
@@ -37,7 +41,7 @@ export default function LogHealthScreen({ navigation }: Props) {
         />
         <Stepper
           label="😴 Sleep"
-          unit="hours last night"
+          unit={`hours last night${watchHint(watch?.sleepHours, 'h', log.sleepHours)}`}
           value={log.sleepHours}
           step={0.5}
           max={24}
@@ -45,7 +49,7 @@ export default function LogHealthScreen({ navigation }: Props) {
         />
         <Stepper
           label="🏃 Exercise"
-          unit="minutes"
+          unit={`minutes${watchHint(watch?.exerciseMinutes, 'min', log.exerciseMinutes)}`}
           value={log.exerciseMinutes}
           step={5}
           max={600}
