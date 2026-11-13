@@ -16,12 +16,19 @@ import DetailScreen from './src/screens/home/DetailScreen';
 import SearchScreen from './src/screens/search/SearchScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
 import EditProfileScreen from './src/screens/profile/EditProfileScreen';
+import TrackerScreen from './src/screens/tracker/TrackerScreen';
+import LogLearningScreen from './src/screens/tracker/LogLearningScreen';
+import LogHealthScreen from './src/screens/tracker/LogHealthScreen';
+import SummaryScreen from './src/screens/tracker/SummaryScreen';
+import WatchScreen from './src/screens/tracker/WatchScreen';
+import { TrackerProvider } from './src/store/TrackerContext';
 
 import {
   AuthStackParamList,
   MainTabParamList,
   HomeStackParamList,
   ProfileStackParamList,
+  TrackerStackParamList,
 } from './src/types/navigation';
 import colors from './src/theme/colors';
 
@@ -29,6 +36,19 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const HomeStack = createNativeStackNavigator<HomeStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+const TrackerStack = createNativeStackNavigator<TrackerStackParamList>();
+
+function TrackerNavigator() {
+  return (
+    <TrackerStack.Navigator screenOptions={{ headerShown: false }}>
+      <TrackerStack.Screen name="TrackerMain" component={TrackerScreen} />
+      <TrackerStack.Screen name="LogLearning" component={LogLearningScreen} />
+      <TrackerStack.Screen name="LogHealth" component={LogHealthScreen} />
+      <TrackerStack.Screen name="Summary" component={SummaryScreen} />
+      <TrackerStack.Screen name="Watch" component={WatchScreen} />
+    </TrackerStack.Navigator>
+  );
+}
 
 function HomeNavigator() {
   return (
@@ -64,6 +84,11 @@ function MainTabs() {
         options={{ tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🏠</Text> }}
       />
       <Tab.Screen
+        name="Progress"
+        component={TrackerNavigator}
+        options={{ tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>📈</Text> }}
+      />
+      <Tab.Screen
         name="Search"
         component={SearchScreen}
         options={{ tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 20 }}>🔍</Text> }}
@@ -87,15 +112,18 @@ function MainTabs() {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-        <AuthStack.Screen name="Root" component={RootScreen} />
-        <AuthStack.Screen name="Login" component={LoginScreen} />
-        <AuthStack.Screen name="SignUp" component={SignUpScreen} />
-        <AuthStack.Screen name="Verification" component={VerificationScreen} />
-        <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-        <AuthStack.Screen name="CreateNewPassword" component={CreateNewPasswordScreen} />
-      </AuthStack.Navigator>
-    </NavigationContainer>
+    <TrackerProvider>
+      <NavigationContainer>
+        <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+          <AuthStack.Screen name="Root" component={RootScreen} />
+          <AuthStack.Screen name="Login" component={LoginScreen} />
+          <AuthStack.Screen name="SignUp" component={SignUpScreen} />
+          <AuthStack.Screen name="Verification" component={VerificationScreen} />
+          <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+          <AuthStack.Screen name="CreateNewPassword" component={CreateNewPasswordScreen} />
+          <AuthStack.Screen name="Main" component={MainTabs} />
+        </AuthStack.Navigator>
+      </NavigationContainer>
+    </TrackerProvider>
   );
 }

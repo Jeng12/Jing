@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm install          # install dependencies
+npm install          # install dependencies (versions are pinned to Expo SDK 54 — add packages with `npx expo install`)
 npm start            # start Expo dev server
 npm run android      # run on Android
 npm run ios          # run on iOS (macOS only)
@@ -68,19 +68,21 @@ src/
 All navigators are defined and composed in `App.tsx`:
 
 ```
-AuthStack (NativeStack)           ← currently the only rendered navigator
+AuthStack (NativeStack)           ← root navigator, wrapped in TrackerProvider
   Root → Login → SignUp → Verification → ResetPassword → CreateNewPassword
 
-MainTabs (BottomTabs)             ← defined but NOT yet wired into AuthStack
+MainTabs (BottomTabs)             ← `Main` route of AuthStack, reached from Login
   Home tab   → HomeNavigator (NativeStack)
                   HomeMain → Detail
+  Progress   → TrackerNavigator (NativeStack)
+                  TrackerMain → LogLearning / LogHealth / Summary / Watch
   Search tab → SearchScreen
   WatchList  → (placeholder, no screen yet)
   Profile    → ProfileNavigator (NativeStack)
                   ProfileMain → EditProfile
 ```
 
-**Key gap:** After a successful login, nothing navigates to `MainTabs`. Wiring this is the next critical step — replace the `AuthStack` root with a conditional render based on auth state, or add a `navigate('MainTabs')` call from `LoginScreen`/`SignUpScreen`.
+`LoginScreen`'s Login button resets the stack to the `Main` route (`MainTabs`). Sign-up still ends at Login, and Profile's Log Out does not return to the auth screens yet.
 
 All param lists are in `src/types/navigation.ts` and typed with `NativeStackNavigationProp` / `RouteProp` throughout screens.
 
@@ -109,6 +111,24 @@ All colors come from `src/theme/colors.ts` — import the `Colors` object, never
 
 The `Movie` / `Review` / `CastMember` interfaces are defined in `src/types/navigation.ts` (not a separate file).
 
+### Progress Tracker
+
+The Progress tab tracks learning sessions and daily health (water, sleep, exercise, mood) and shows week-over-week improvement.
+
+- `src/types/tracker.ts` — `LearningSession`, `HealthLog`, `TrackerData`, `ProgressSummary`
+- `src/store/TrackerContext.tsx` — `TrackerProvider` / `useTracker()`; persists to AsyncStorage (`jing.tracker.v1`) and reschedules the daily notification whenever data changes
+- `src/utils/trackerStats.ts` — pure stats: daily goal progress, 7-day totals vs the previous 7 days, streak, `buildSummary()`
+- `src/services/notifications.ts` — `expo-notifications` wrapper (permission, daily summary, send-now). Local notifications only; a no-op on web
+- `src/services/healthConnect.android.ts` — reads Garmin watch data (steps, sleep, exercise, resting heart rate) from Android Health Connect via `react-native-health-connect`; `healthConnect.ts` is the no-op fallback for iOS/web with the same exports
+- `src/screens/tracker/` — `TrackerScreen` (dashboard), `LogLearningScreen`, `LogHealthScreen`, `SummaryScreen` (summary + reminder settings), `WatchScreen` (connect / sync the watch)
+- `src/components/ScreenHeader.tsx`, `Stepper.tsx` — back-arrow header and −/+ number row
+
+Watch data is stored separately (`TrackerData.watch`) and merged at read time by `effectiveHealth()` — a manually entered value always wins, and the streak counts manual logs only. It syncs the last 14 days on launch, on returning to the foreground, and on "Sync now".
+
+Health Connect needs native code: it does not run in Expo Go. Build with `npx expo run:android` or EAS (the config plugins in `app.json` set the health permissions and `minSdkVersion` 26).
+
+Unlike the movie data, tracker data is real user input, not mocked. Extra theme tokens: `Colors.success`, `Colors.danger`.
+
 ### Shared Components
 
 **`AuthButton`** — use for any full-width action button. Props: `title`, `onPress`, optional `style` override.
@@ -126,7 +146,7 @@ The `Movie` / `Review` / `CastMember` interfaces are defined in `src/types/navig
 
 ## Known Gaps / Next Steps
 
-1. **Auth → Main navigation not wired** — `MainTabs` is never rendered; add conditional navigation from `LoginScreen` after "sign in".
+1. **Logout not wired** — Profile's Log Out modal does not navigate back to the auth stack.
 2. **WatchList tab** — exists in `MainTabParamList` but has no screen component.
 3. **Category tabs (HomeScreen)** — the 4 tabs (Now Playing, Upcoming, Top Rated, Popular) are rendered but all show the same `NOW_PLAYING` data; each needs its own dataset.
 4. **Real auth/backend** — all auth screens are UI-only shells.

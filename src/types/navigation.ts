@@ -5,10 +5,12 @@ export type AuthStackParamList = {
   Verification: { email: string };
   ResetPassword: undefined;
   CreateNewPassword: undefined;
+  Main: undefined;
 };
 
 export type MainTabParamList = {
   Home: undefined;
+  Progress: undefined;
   Search: undefined;
   WatchList: undefined;
   Profile: undefined;
@@ -17,6 +19,14 @@ export type MainTabParamList = {
 export type HomeStackParamList = {
   HomeMain: undefined;
   Detail: { movie: Movie };
+};
+
+export type TrackerStackParamList = {
+  TrackerMain: undefined;
+  LogLearning: undefined;
+  LogHealth: undefined;
+  Summary: undefined;
+  Watch: undefined;
 };
 
 export type ProfileStackParamList = {
