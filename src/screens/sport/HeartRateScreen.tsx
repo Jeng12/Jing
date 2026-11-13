@@ -2,16 +2,17 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Animated, Easing, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { TabScreenProps } from '../../types/navigation';
+import { AppScreenProps } from '../../types/navigation';
 import { useLiveHeartRate } from '../../store/LiveHeartRateContext';
 import { useTracker } from '../../store/TrackerContext';
 import { liveHeartRateSupported } from '../../services/liveHeartRate';
 import { heartRateZone, ZONE_LIST } from '../../utils/heartRate';
 import Sparkline from '../../components/Sparkline';
 import AuthButton from '../../components/AuthButton';
+import ScreenHeader from '../../components/ScreenHeader';
 import colors from '../../theme/colors';
 
-type Props = TabScreenProps<'Live'>;
+type Props = AppScreenProps<'HeartRate'>;
 
 const PROBLEMS: Record<string, string> = {
   permission: 'Allow Nearby devices (Bluetooth) for Jing in your phone settings, then try again.',
@@ -60,7 +61,7 @@ function PulsingHeart({ bpm, color }: { bpm: number | null; color: string }) {
   );
 }
 
-export default function LiveScreen(_props: Props) {
+export default function HeartRateScreen({ navigation }: Props) {
   const live = useLiveHeartRate();
   const { data } = useTracker();
   const [chartWidth, setChartWidth] = useState(0);
@@ -81,10 +82,10 @@ export default function LiveScreen(_props: Props) {
   const connected = live.status === 'live' || live.status === 'reconnecting' || live.status === 'connecting';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container}>
+      <ScreenHeader title="Heart Rate Monitor" onBack={() => navigation.goBack()} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Live</Text>
-        <Text style={styles.subtitle}>Real-time heart rate from your Garmin</Text>
+        <Text style={styles.subtitle}>Real-time heart rate from your Garmin. Workouts in Sport use it automatically.</Text>
 
         {!liveHeartRateSupported ? (
           <View style={styles.card}>
@@ -249,8 +250,7 @@ export default function LiveScreen(_props: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, paddingBottom: 32 },
-  title: { color: colors.white, fontSize: 28, fontWeight: '700' },
-  subtitle: { color: colors.gray, fontSize: 13, marginTop: 2, marginBottom: 18 },
+  subtitle: { color: colors.gray, fontSize: 13, lineHeight: 19, marginBottom: 18 },
   card: { backgroundColor: colors.card, borderRadius: 22, padding: 18, marginBottom: 14 },
   body: { color: colors.gray, fontSize: 14, lineHeight: 21, textAlign: 'center' },
   liveCard: { alignItems: 'center' },

@@ -76,7 +76,7 @@ export default function ProfileScreen({ navigation }: Props) {
             color={colors.heart}
             label="Live heart rate"
             detail={live.status === 'live' ? `Live · ${live.bpm ?? '--'} bpm` : live.lastDevice?.name ?? 'Bluetooth broadcast'}
-            onPress={() => navigation.navigate('Tabs', { screen: 'Live' })}
+            onPress={() => navigation.navigate('HeartRate')}
           />
         </View>
 

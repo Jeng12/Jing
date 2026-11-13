@@ -36,6 +36,8 @@ export interface TrackerGoals {
   steps: number;
   /** Used for heart-rate zones; roughly 220 minus age. */
   maxHeartRate: number;
+  /** Used to estimate workout calories. */
+  weightKg: number;
   learningMinutes: number;
   waterGlasses: number;
   sleepHours: number;
@@ -55,6 +57,30 @@ export interface TrackerData {
   reminder: ReminderSettings;
   watch: Record<string, WatchDay>;
   watchSync: WatchSync;
+  workouts: Workout[];
+}
+
+export type SportKey = 'run' | 'walk' | 'cycle' | 'hike' | 'gym' | 'yoga' | 'football' | 'basketball' | 'other';
+
+/** A workout recorded in Sport mode. */
+export interface Workout {
+  id: string;
+  sport: SportKey;
+  date: string; // local YYYY-MM-DD of the start
+  startedAt: string; // ISO
+  endedAt: string; // ISO
+  /** Moving time, pauses excluded. */
+  durationSec: number;
+  distanceM?: number;
+  calories: number;
+  avgHeartRate?: number;
+  maxHeartRate?: number;
+  /** Seconds in heart-rate zones 0–5 (0 = below zone 1). */
+  zoneSeconds?: number[];
+  /** Heart rate about every 10 seconds, for the summary chart. */
+  heartRateSeries?: number[];
+  /** Route as [latitude, longitude] pairs, thinned to at most a few hundred points. */
+  route?: [number, number][];
 }
 
 export interface ProgressSummary {

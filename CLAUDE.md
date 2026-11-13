@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, shows week-over-week trends, and sends a daily summary notification. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock — there is no backend, and all data stays on the device.
+**Jing** is a React Native (Expo) health tracking app with a dark theme. It tracks daily health (steps, sleep, exercise, water, mood), learning sessions and heart rate, records workouts in Sport mode (timer, GPS distance and pace, live heart rate and zones), shows week-over-week trends, and sends a daily summary notification. It reads Garmin watch data on Android two ways: synced data through Health Connect, and live heart rate over Bluetooth. Sign-in is a local mock — there is no backend, and all data stays on the device.
 
 ## Commands
 
@@ -29,6 +29,7 @@ If the web dev server keeps serving old code after edits, restart it with `npx e
 - **React Navigation** 7.x — `@react-navigation/native-stack`, `@react-navigation/bottom-tabs`
 - **react-native-svg** (rings, sparkline), **@expo/vector-icons** (Ionicons)
 - **react-native-health-connect** (Garmin data via Health Connect), **react-native-ble-plx** (live heart rate)
+- **expo-location** (workout GPS, foreground only), **expo-keep-awake** (screen stays on during a workout)
 - **expo-notifications**, **@react-native-async-storage/async-storage**
 - **New Architecture** enabled (app.json)
 
@@ -40,12 +41,13 @@ app.json             # Expo config (name: Jing, portrait, dark, health/BLE permi
 src/
   types/
     navigation.ts    # param lists + AuthScreenProps / AppScreenProps / TabScreenProps helpers
-    tracker.ts       # LearningSession, HealthLog, WatchDay, TrackerGoals, TrackerData, WatchDiagnostics, MetricKey
+    tracker.ts       # LearningSession, HealthLog, WatchDay, TrackerGoals, TrackerData, Workout, SportKey, WatchDiagnostics, MetricKey
   theme/colors.ts    # all colors, including one accent per metric and heart-rate zone colors
   store/
     SessionContext.tsx        # mock sign-in + profile (AsyncStorage 'jing.session.v1')
     TrackerContext.tsx        # logs, goals, watch data, reminder (AsyncStorage 'jing.tracker.v1')
     LiveHeartRateContext.tsx  # Bluetooth scan/connect state, live bpm, session stats, zones
+    WorkoutContext.tsx        # active workout (timer, pauses, GPS, heart rate) and the unsaved draft
   services/
     healthConnect.android.ts  # reads Garmin data from Health Connect + diagnostics
     healthConnect.ts          # no-op fallback (iOS/web), same exports
@@ -56,11 +58,16 @@ src/
     trackerStats.ts  # pure stats: effectiveHealth, periodTotals, streak, dailyValue, buildSummary, ...
     metrics.ts       # METRICS table (label, unit, color, icon, goal) used by Trends
     heartRate.ts     # BLE packet parsing, base64 decode, heart-rate zones
+    sports.ts        # SPORTS table (icon, GPS?, MET), calorie estimate, duration/distance/pace formatting
+    geo.ts           # haversine distance, route thinning, route → SVG points
   components/        # AuthButton, AuthInput, ScreenHeader, Stepper, ProgressRing, BarChart, Sparkline, TrendCard, IconBadge
   screens/
     auth/            # Root (welcome), Login, SignUp, Verification, ResetPassword, CreateNewPassword
     today/TodayScreen.tsx     # dashboard: rings, heart/sleep/water/mood tiles, quick water add
-    live/LiveScreen.tsx       # live heart rate: find watch, bpm, zone, sparkline, time in zones
+    sport/SportScreen.tsx         # Sport tab: sport picker, in-progress/unsaved banner, week totals, history
+    sport/WorkoutScreen.tsx       # recording: timer, heart rate + zone, distance, pace/speed, calories, pause/finish
+    sport/WorkoutSummaryScreen.tsx # results, route shape, heart-rate chart, zones; save/discard or delete
+    sport/HeartRateScreen.tsx     # connect the watch's Broadcast Heart Rate, live bpm, zones
     trends/TrendsScreen.tsx   # 7-day chart per metric + all-metric comparison cards
     learn/LearnScreen.tsx     # add learning sessions, today's list, topics this week
     profile/                  # ProfileScreen, EditProfileScreen, GoalsScreen
@@ -78,19 +85,27 @@ AuthStack (NativeStack)       ← when signed out
   Root → Login | SignUp → Verification → (signup: signed in) | (reset: CreateNewPassword → Login)
 
 AppStack (NativeStack)        ← when signed in
-  Tabs (BottomTabs): Today | Live | Trends | Learn | Profile
-  LogHealth, Summary, Watch, Goals, EditProfile   ← opened from any tab
+  Tabs (BottomTabs): Today | Sport | Trends | Learn | Profile
+  LogHealth, Summary, Watch, Goals, EditProfile, HeartRate, Workout, WorkoutSummary   ← opened from any tab
 ```
 
-Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type screens with `TabScreenProps<'Today'>`, `AppScreenProps<'Watch'>` or `AuthScreenProps<'Login'>` from `src/types/navigation.ts`. From a tab, open another tab with `navigation.navigate('Tabs', { screen: 'Live' })`.
+Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type screens with `TabScreenProps<'Today'>`, `AppScreenProps<'Watch'>` or `AuthScreenProps<'Login'>` from `src/types/navigation.ts`. From a tab, open another tab with `navigation.navigate('Tabs', { screen: 'Sport' })`. Finishing a workout replaces `Workout` with `WorkoutSummary`, so Back returns to the tabs.
 
 ### Data and the Garmin watch
 
 - **Manual data** (`TrackerData.health`, `sessions`) is entered in Log health, the Today water button and Learn.
 - **Watch data** (`TrackerData.watch`, one `WatchDay` per date) comes from Health Connect, where Garmin Connect writes it after each watch sync. `readWatchDays` reads raw records, prefers records whose origin matches `/garmin/i` (so phone or other-app data is not double counted), and falls back to Health Connect aggregates when no Garmin records exist. It syncs 14 days on launch, on returning to the app, every minute while open, and on "Sync now".
-- **Merging:** `effectiveHealth()` uses a manual value when one is entered, otherwise the watch value. The streak counts manual logs only.
+- **Merging:** `effectiveHealth()` uses a manual value when one is entered, otherwise the watch value; for exercise, the larger of watch activities and Jing workouts (the same session is often on both). The streak counts days with something logged or recorded in Jing, not watch-only days.
 - **Diagnostics:** `diagnoseWatch()` lists, per record type, how many records Health Connect has for the last 7 days and which apps wrote them. The Watch screen turns this into a plain-language reason when data is missing (e.g. "no data from Garmin Connect").
 - **Live heart rate** does not go through Health Connect. The watch's *Broadcast Heart Rate* advertises the standard BLE Heart Rate service (0x180D / 0x2A37); `LiveHeartRateContext` scans, connects, parses packets with `parseHeartRateMeasurement`, keeps ~2 minutes of samples for the chart, and tracks min/avg/max and time in zones (zones from `goals.maxHeartRate`). It retries up to 3 times after an unexpected disconnect.
+
+### Sport mode
+
+- `WorkoutContext` holds one active workout. Moving time is computed from timestamps (`startedAt`, `pausedMs`, `pausedAt`), not a ticking counter, so it stays exact.
+- GPS sports use `expo-location` `watchPositionAsync` while the app is open (no background location). Fixes worse than 30 m accuracy and jumps faster than 40 m/s are ignored; distance is not added while paused. The route is thinned to ≤400 points when saved.
+- Heart rate comes from `LiveHeartRateContext` when the watch is broadcasting; each new sample adds to avg/max, zone seconds and a 10-second series for the summary chart.
+- Calories are an estimate: MET (per sport, in `SPORTS`) × `goals.weightKg` × hours.
+- **Finish** stores a `draft`; the summary screen saves it to `TrackerData.workouts` or discards it. If the user leaves without choosing, the Sport tab shows an "Unsaved" banner.
 
 ### Theme
 
@@ -127,6 +142,7 @@ All colors come from `src/theme/colors.ts` — import the `Colors` object, never
 
 1. **Real auth/backend** — sign-in is local only; data never leaves the phone.
 2. **iOS watch support** — Health Connect and BLE are wired for Android only (iOS would need HealthKit and BLE permission strings).
-3. **Real-time steps** — only heart rate is live; steps, sleep and activities arrive when Garmin Connect syncs to Health Connect. Truly live steps would need a Connect IQ watch app or Garmin's licensed Health SDK.
-4. **Notification text** is fixed when scheduled; it reflects data as of the last time the app was open.
-5. **Unused auth assets** — the social sign-in buttons on the welcome screen do nothing.
+3. **Background workouts** — GPS only counts while Jing is open (the screen is kept on); recording with the screen locked would need a location foreground service.
+4. **Real-time steps** — only heart rate is live; steps, sleep and activities arrive when Garmin Connect syncs to Health Connect. Truly live steps would need a Connect IQ watch app or Garmin's licensed Health SDK.
+5. **Notification text** is fixed when scheduled; it reflects data as of the last time the app was open.
+6. **Unused auth assets** — the social sign-in buttons on the welcome screen do nothing.

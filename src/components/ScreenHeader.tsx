@@ -4,15 +4,20 @@ import colors from '../theme/colors';
 
 interface Props {
   title: string;
-  onBack: () => void;
+  /** Leave out to hide the back button (e.g. an unsaved workout that must be saved or discarded). */
+  onBack?: () => void;
 }
 
 export default function ScreenHeader({ title, onBack }: Props) {
   return (
     <View style={styles.header}>
-      <TouchableOpacity style={styles.backBtn} onPress={onBack} accessibilityLabel="Go back">
-        <Text style={styles.backArrow}>‹</Text>
-      </TouchableOpacity>
+      {onBack ? (
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} accessibilityLabel="Go back">
+          <Text style={styles.backArrow}>‹</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.spacer} />
+      )}
       <Text style={styles.title}>{title}</Text>
       <View style={styles.spacer} />
     </View>

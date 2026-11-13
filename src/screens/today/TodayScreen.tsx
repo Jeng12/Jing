@@ -139,7 +139,7 @@ export default function TodayScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.grid}>
-          <TouchableOpacity style={styles.tile} onPress={() => navigation.navigate('Tabs', { screen: 'Live' })}>
+          <TouchableOpacity style={styles.tile} onPress={() => navigation.navigate('HeartRate')}>
             <View style={styles.tileHead}>
               <IconBadge name="heart" color={colors.heart} />
               <Text style={styles.tileLabel}>Heart rate</Text>
@@ -207,10 +207,16 @@ export default function TodayScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.logBtn} onPress={() => navigation.navigate('LogHealth')}>
-          <Ionicons name="add-circle" size={20} color={colors.background} />
-          <Text style={styles.logText}>Log today's health</Text>
-        </TouchableOpacity>
+        <View style={styles.actions}>
+          <TouchableOpacity style={styles.workoutBtn} onPress={() => navigation.navigate('Tabs', { screen: 'Sport' })}>
+            <Ionicons name="fitness" size={20} color={colors.primary} />
+            <Text style={styles.workoutText}>Start workout</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logBtn} onPress={() => navigation.navigate('LogHealth')}>
+            <Ionicons name="add-circle" size={20} color={colors.background} />
+            <Text style={styles.logText}>Log health</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -287,7 +293,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   moodEmoji: { fontSize: 34 },
+  actions: { flexDirection: 'row', gap: 12 },
+  workoutBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: 30,
+    paddingVertical: 14,
+  },
+  workoutText: { color: colors.primary, fontSize: 16, fontWeight: '700' },
   logBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

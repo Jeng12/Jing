@@ -13,7 +13,7 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Today: undefined;
-  Live: undefined;
+  Sport: undefined;
   Trends: undefined;
   Learn: undefined;
   Profile: undefined;
@@ -27,6 +27,10 @@ export type AppStackParamList = {
   Watch: undefined;
   Goals: undefined;
   EditProfile: undefined;
+  HeartRate: undefined;
+  Workout: undefined;
+  /** Without an id: the workout that was just finished and is not saved yet. */
+  WorkoutSummary: { workoutId?: string } | undefined;
 };
 
 export type AuthScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<AuthStackParamList, T>;

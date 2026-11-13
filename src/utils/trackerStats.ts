@@ -21,14 +21,24 @@ export function emptyHealth(date: string): HealthLog {
   return { date, waterGlasses: 0, sleepHours: 0, exerciseMinutes: 0, mood: 0 };
 }
 
-/** Health for a day with watch data filling in whatever was not entered by hand. */
+/** Minutes of workouts recorded in Sport mode that day. */
+export function workoutMinutesOn(data: TrackerData, date: string): number {
+  const seconds = data.workouts.filter(w => w.date === date).reduce((sum, w) => sum + w.durationSec, 0);
+  return Math.round(seconds / 60);
+}
+
+/**
+ * Health for a day with watch data and workouts filling in whatever was not entered by hand.
+ * Exercise takes the larger of watch activities and Jing workouts, since the same session is
+ * often recorded on both.
+ */
 export function effectiveHealth(data: TrackerData, date: string): HealthLog {
   const manual = data.health[date] ?? emptyHealth(date);
   const watch = data.watchSync.enabled ? data.watch[date] : undefined;
   return {
     ...manual,
     sleepHours: manual.sleepHours || watch?.sleepHours || 0,
-    exerciseMinutes: manual.exerciseMinutes || watch?.exerciseMinutes || 0,
+    exerciseMinutes: manual.exerciseMinutes || Math.max(watch?.exerciseMinutes ?? 0, workoutMinutesOn(data, date)),
   };
 }
 
@@ -69,11 +79,11 @@ export function periodTotals(data: TrackerData, days: string[]): PeriodTotals {
   };
 }
 
-/** A day counts toward the streak only when something was logged by hand, not from the watch. */
+/** A day counts toward the streak when something was logged or recorded in Jing, not just synced from the watch. */
 function isActiveDay(data: TrackerData, date: string): boolean {
   const h = data.health[date];
   const hasHealth = !!h && (h.waterGlasses > 0 || h.sleepHours > 0 || h.exerciseMinutes > 0 || h.mood > 0);
-  return hasHealth || learningMinutesOn(data, date) > 0;
+  return hasHealth || learningMinutesOn(data, date) > 0 || data.workouts.some(w => w.date === date);
 }
 
 /** Percent change from prev to cur; null when there is no previous value to compare with. */

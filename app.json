@@ -53,7 +53,13 @@
           "neverForLocation": true
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Jing uses your location to measure distance and pace during workouts."
+        }
+      ]
     ]
   }
 }

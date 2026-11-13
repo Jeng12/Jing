@@ -6,6 +6,7 @@ import {
   ReminderSettings,
   TrackerData,
   TrackerGoals,
+  Workout,
   WatchConnectResult,
   WatchDay,
 } from '../types/tracker';
@@ -23,10 +24,11 @@ const STORAGE_KEY = 'jing.tracker.v1';
 const DEFAULT_DATA: TrackerData = {
   sessions: [],
   health: {},
-  goals: { steps: 8000, maxHeartRate: 190, learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
+  goals: { steps: 8000, maxHeartRate: 190, weightKg: 70, learningMinutes: 30, waterGlasses: 8, sleepHours: 8, exerciseMinutes: 30 },
   reminder: { enabled: false, hour: 20, minute: 0 },
   watch: {},
   watchSync: { enabled: false, lastSyncedAt: null },
+  workouts: [],
 };
 
 const WATCH_SYNC_DAYS = 14;
@@ -46,6 +48,8 @@ interface TrackerContextValue {
   /** Resolves false when turning on fails because notification permission was not granted. */
   setReminder: (reminder: ReminderSettings) => Promise<boolean>;
   updateGoals: (goals: TrackerGoals) => void;
+  addWorkout: (workout: Workout) => void;
+  removeWorkout: (id: string) => void;
   /** Asks for Health Connect access, then pulls the watch data in. */
   connectWatch: () => Promise<WatchConnectResult>;
   disconnectWatch: () => void;
@@ -184,6 +188,14 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
     setData(prev => ({ ...prev, goals }));
   }, []);
 
+  const addWorkout = useCallback((workout: Workout) => {
+    setData(prev => ({ ...prev, workouts: [workout, ...prev.workouts.filter(w => w.id !== workout.id)] }));
+  }, []);
+
+  const removeWorkout = useCallback((id: string) => {
+    setData(prev => ({ ...prev, workouts: prev.workouts.filter(w => w.id !== id) }));
+  }, []);
+
   const value = useMemo(
     () => ({
       data,
@@ -195,6 +207,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       healthFor,
       setReminder,
       updateGoals,
+      addWorkout,
+      removeWorkout,
       connectWatch,
       disconnectWatch,
       syncWatch,
@@ -210,6 +224,8 @@ export function TrackerProvider({ children }: { children: React.ReactNode }) {
       healthFor,
       setReminder,
       updateGoals,
+      addWorkout,
+      removeWorkout,
       connectWatch,
       disconnectWatch,
       syncWatch,

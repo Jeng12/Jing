@@ -24,7 +24,8 @@ export default function GoalsScreen({ navigation }: Props) {
         <Stepper label="🌙 Sleep" unit="hours a night" value={goals.sleepHours} step={0.5} min={4} max={12} onChange={sleepHours => setGoals({ ...goals, sleepHours })} />
         <Stepper label="💧 Water" unit="glasses a day" value={goals.waterGlasses} step={1} min={1} max={20} onChange={waterGlasses => setGoals({ ...goals, waterGlasses })} />
         <Stepper label="📚 Learning" unit="minutes a day" value={goals.learningMinutes} step={5} min={5} max={480} onChange={learningMinutes => setGoals({ ...goals, learningMinutes })} />
-        <Text style={styles.group}>Heart rate</Text>
+        <Text style={styles.group}>Body</Text>
+        <Stepper label="⚖️ Body weight" unit="kg · for workout calories" value={goals.weightKg} step={1} min={30} max={200} onChange={weightKg => setGoals({ ...goals, weightKg })} />
         <Stepper label="❤️ Max heart rate" unit="bpm · about 220 minus your age" value={goals.maxHeartRate} step={1} min={120} max={220} onChange={maxHeartRate => setGoals({ ...goals, maxHeartRate })} />
         <AuthButton
           title="Save goals"

@@ -15,7 +15,10 @@ import ResetPasswordScreen from './src/screens/auth/ResetPasswordScreen';
 import CreateNewPasswordScreen from './src/screens/auth/CreateNewPasswordScreen';
 
 import TodayScreen from './src/screens/today/TodayScreen';
-import LiveScreen from './src/screens/live/LiveScreen';
+import SportScreen from './src/screens/sport/SportScreen';
+import HeartRateScreen from './src/screens/sport/HeartRateScreen';
+import WorkoutScreen from './src/screens/sport/WorkoutScreen';
+import WorkoutSummaryScreen from './src/screens/sport/WorkoutSummaryScreen';
 import TrendsScreen from './src/screens/trends/TrendsScreen';
 import LearnScreen from './src/screens/learn/LearnScreen';
 import ProfileScreen from './src/screens/profile/ProfileScreen';
@@ -28,6 +31,7 @@ import WatchScreen from './src/screens/tracker/WatchScreen';
 import { TrackerProvider } from './src/store/TrackerContext';
 import { LiveHeartRateProvider, useLiveHeartRate } from './src/store/LiveHeartRateContext';
 import { SessionProvider, useSession } from './src/store/SessionContext';
+import { WorkoutProvider, useWorkout } from './src/store/WorkoutContext';
 import { AuthStackParamList, AppStackParamList, MainTabParamList } from './src/types/navigation';
 import type { IconName } from './src/utils/metrics';
 import colors from './src/theme/colors';
@@ -43,7 +47,7 @@ const navTheme: Theme = {
 
 const TAB_ICONS: Record<keyof MainTabParamList, [IconName, IconName]> = {
   Today: ['today', 'today-outline'],
-  Live: ['pulse', 'pulse-outline'],
+  Sport: ['fitness', 'fitness-outline'],
   Trends: ['stats-chart', 'stats-chart-outline'],
   Learn: ['book', 'book-outline'],
   Profile: ['person-circle', 'person-circle-outline'],
@@ -51,6 +55,7 @@ const TAB_ICONS: Record<keyof MainTabParamList, [IconName, IconName]> = {
 
 function MainTabs() {
   const live = useLiveHeartRate();
+  const workout = useWorkout();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -66,10 +71,10 @@ function MainTabs() {
     >
       <Tab.Screen name="Today" component={TodayScreen} />
       <Tab.Screen
-        name="Live"
-        component={LiveScreen}
+        name="Sport"
+        component={SportScreen}
         options={{
-          tabBarBadge: live.status === 'live' && live.bpm ? live.bpm : undefined,
+          tabBarBadge: live.status === 'live' && live.bpm ? live.bpm : workout.active ? '●' : undefined,
           tabBarBadgeStyle: styles.badge,
         }}
       />
@@ -89,6 +94,9 @@ function SignedInApp() {
       <AppStack.Screen name="Watch" component={WatchScreen} />
       <AppStack.Screen name="Goals" component={GoalsScreen} />
       <AppStack.Screen name="EditProfile" component={EditProfileScreen} />
+      <AppStack.Screen name="HeartRate" component={HeartRateScreen} />
+      <AppStack.Screen name="Workout" component={WorkoutScreen} options={{ animation: 'slide_from_bottom' }} />
+      <AppStack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} options={{ gestureEnabled: false }} />
     </AppStack.Navigator>
   );
 }
@@ -129,7 +137,9 @@ export default function App() {
       <SessionProvider>
         <TrackerProvider>
           <LiveHeartRateProvider>
-            <Root />
+            <WorkoutProvider>
+              <Root />
+            </WorkoutProvider>
           </LiveHeartRateProvider>
         </TrackerProvider>
       </SessionProvider>
