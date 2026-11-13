@@ -119,7 +119,8 @@ Login and sign-up call `signIn()`; Profile's Log out calls `signOut()`. Type scr
 
 - `services/ai.ts` routes each request by key prefix; `coach.ts` only calls `askAI` and stays provider-neutral. Replies are validated in `parseReport`, so a reply in the wrong shape becomes an error message rather than a broken screen.
 - `services/gemini.ts` posts to `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `x-goog-api-key`, `systemInstruction`, `contents` (assistant → `model` role) and, for reports, `responseMimeType: application/json` + `responseJsonSchema` (with `additionalProperties` removed). A 404 moves on to the next model in `GEMINI_MODELS`; `promptFeedback.blockReason` or a safety-type `finishReason` is a refusal; `MAX_TOKENS` is truncation; an "API key" 400 is an auth error.
-- `services/claude.ts` posts to `https://api.anthropic.com/v1/messages` with `anthropic-version: 2026-10-21`, model `claude-opus-5-5`, `output_config.effort: "medium"`, and server-side refusal fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). It retries 429/5xx/529 twice, times out at 120 s, checks `stop_reason` (`refusal`, `max_tokens`) before reading text blocks, and maps failures to `ClaudeError` kinds with user-facing text in `describeClaudeError`. On web it adds `anthropic-dangerous-direct-browser-access`.
+- `services/claude.ts` posts to `https://api.anthropic.com/v1/messages` with `anthropic-version: 2026-10-21`, model `claude-opus-5-5`, `output_config.effort: "medium"`, and server-side refusal fallbacks (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). It checks `stop_reason` (`refusal`, `max_tokens`) before reading text blocks. On web it adds `anthropic-dangerous-direct-browser-access`.
+- Both clients share `postJson` in `aiTypes.ts` (120 s timeout, two retries for network errors, 429 and 5xx/529) and throw `AiError`; `describeAiError` in `ai.ts` turns its kind into user-facing text.
 - `services/coach.ts` builds a compact JSON of the last 14 days (`buildDataContext`; unrecorded fields are left out) and has one system prompt. Reports use structured outputs (`output_config.format` JSON schema → `CoachReport`); the chat is plain text, and the first user turn carries the data so follow-ups keep it.
 - Two-week reports are cached in AsyncStorage (`jing.coach.v1`); workout reports are saved on the workout (`Workout.coachReport`) so they are not requested twice. Nothing is sent until the user taps Analyse or Ask.
 
@@ -156,7 +157,7 @@ All colors come from `src/theme/colors.ts` — import the `Colors` object, never
 
 ## Known Gaps / Next Steps
 
-1. **Real auth/backend** — sign-in is local only. The AI Coach uses the user's own API key from the phone, which suits a personal app; a published app should call Claude through its own server instead.
+1. **Real auth/backend** — sign-in is local only. The AI Coach uses the user's own API key from the phone, which suits a personal app; a published app should call the AI provider through its own server instead.
 2. **iOS watch support** — Health Connect and BLE are wired for Android only (iOS would need HealthKit and BLE permission strings).
 3. **Background workouts** — GPS only counts while Jing is open (the screen is kept on); recording with the screen locked would need a location foreground service.
 4. **Real-time steps** — only heart rate is live; steps, sleep and activities arrive when Garmin Connect syncs to Health Connect. Truly live steps would need a Connect IQ watch app or Garmin's licensed Health SDK.
