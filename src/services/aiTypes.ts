@@ -1,8 +1,41 @@
 // Shared by the Claude and Gemini clients.
 
+export type AiProvider = 'gemini' | 'claude';
+
+/** The user's key and which service it belongs to (chosen on the AI Coach screen). */
+export interface AiCredentials {
+  provider: AiProvider;
+  key: string;
+}
+
+/**
+ * Guesses the service from a key's prefix: Anthropic keys start "sk-ant-"; Google AI Studio keys
+ * start "AQ." (current format) or "AIza" (older format). Returns null for anything else.
+ */
+export function detectProvider(key: string | null | undefined): AiProvider | null {
+  const k = key?.trim() ?? '';
+  if (k.startsWith('sk-ant-')) return 'claude';
+  if (k.startsWith('AQ.') || k.startsWith('AIza')) return 'gemini';
+  return null;
+}
+
 export interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;
+}
+
+/** Earlier versions stored the bare key; those load with the provider guessed from the prefix. */
+export function parseStoredCredentials(raw: string | null): AiCredentials | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<AiCredentials>;
+    if (parsed && typeof parsed.key === 'string' && (parsed.provider === 'gemini' || parsed.provider === 'claude')) {
+      return { key: parsed.key, provider: parsed.provider };
+    }
+  } catch {
+    // not JSON: a bare key
+  }
+  return { key: raw, provider: detectProvider(raw) ?? 'gemini' };
 }
 
 export interface AskOptions {

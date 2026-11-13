@@ -1,37 +1,26 @@
-import { AiError, AskOptions } from './aiTypes';
+import { AiCredentials, AiError, AiProvider, AskOptions } from './aiTypes';
 import { askClaude } from './claude';
 import { askGemini } from './gemini';
 
-export type { ChatTurn } from './aiTypes';
-export { AiError } from './aiTypes';
-
-export type AiProvider = 'gemini' | 'claude';
+export type { AiCredentials, AiProvider, ChatTurn } from './aiTypes';
+export { AiError, detectProvider } from './aiTypes';
 
 export const PROVIDER_NAMES: Record<AiProvider, string> = { gemini: 'Gemini', claude: 'Claude' };
 
-/** Which service a key belongs to, from its prefix: Google keys start "AIza", Anthropic keys "sk-ant-". */
-export function providerForKey(key: string | null | undefined): AiProvider | null {
-  const k = key?.trim() ?? '';
-  if (k.startsWith('AIza')) return 'gemini';
-  if (k.startsWith('sk-ant-')) return 'claude';
-  return null;
-}
-
-/** Sends the request to whichever service the key belongs to. */
-export function askAI(options: AskOptions): Promise<string> {
-  const provider = providerForKey(options.apiKey);
-  if (provider === 'gemini') return askGemini(options);
-  if (provider === 'claude') return askClaude(options);
-  return Promise.reject(new AiError('auth', 'Unknown API key type'));
+/** Sends the request to the service the saved key belongs to. */
+export function askAI(creds: AiCredentials, request: Omit<AskOptions, 'apiKey'>): Promise<string> {
+  const options = { ...request, apiKey: creds.key };
+  return creds.provider === 'claude' ? askClaude(options) : askGemini(options);
 }
 
 /** Plain-language text for each failure, shown in the app. */
-export function describeAiError(e: unknown, provider: AiProvider | null): string {
+export function describeAiError(e: unknown, provider: AiProvider | null | undefined): string {
   const name = provider ? PROVIDER_NAMES[provider] : 'The AI service';
   if (!(e instanceof AiError)) return 'Something went wrong. Please try again.';
   switch (e.kind) {
     case 'auth':
-      return 'Your API key was not accepted. In AI Coach, remove it at the bottom and enter it again.';
+      // Include the service's own reason: it tells a wrong key apart from a disabled API or a key restriction.
+      return `${name} did not accept your API key (${e.message.split('\n')[0].slice(0, 160)}). Check the key, or remove it at the bottom of AI Coach and add it again.`;
     case 'rate_limit':
       return provider === 'gemini'
         ? 'Gemini usage limit reached for now (the free tier has a daily and per-minute limit). Try again later.'

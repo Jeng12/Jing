@@ -13,8 +13,8 @@ import AuthButton from '../../components/AuthButton';
 import ScreenHeader from '../../components/ScreenHeader';
 import Sparkline from '../../components/Sparkline';
 import CoachReportView from '../../components/CoachReportView';
-import { getApiKey } from '../../services/apiKeyStore';
-import { describeAiError, providerForKey } from '../../services/ai';
+import { getAiCredentials } from '../../services/apiKeyStore';
+import { describeAiError } from '../../services/ai';
 import { analyzeWorkout } from '../../services/coach';
 import colors from '../../theme/colors';
 
@@ -45,15 +45,15 @@ export default function WorkoutSummaryScreen({ navigation, route }: Props) {
   }
 
   const runAnalysis = async () => {
-    const apiKey = await getApiKey();
-    if (!apiKey) return navigation.navigate('Coach');
+    const creds = await getAiCredentials();
+    if (!creds) return navigation.navigate('Coach');
     setAnalyzing(true);
     setAiError('');
     try {
-      const coachReport = await analyzeWorkout(apiKey, workout, data);
+      const coachReport = await analyzeWorkout(creds, workout, data);
       addWorkout({ ...workout, coachReport });
     } catch (e) {
-      setAiError(describeAiError(e, providerForKey(apiKey)));
+      setAiError(describeAiError(e, creds.provider));
     } finally {
       setAnalyzing(false);
     }

@@ -7,8 +7,8 @@ import { AppScreenProps } from '../../types/navigation';
 import { CoachReport } from '../../types/tracker';
 import { useTracker } from '../../store/TrackerContext';
 import { useSession } from '../../store/SessionContext';
-import { clearApiKey, getApiKey, setApiKey } from '../../services/apiKeyStore';
-import { ChatTurn, PROVIDER_NAMES, describeAiError, providerForKey } from '../../services/ai';
+import { clearAiCredentials, getAiCredentials, setAiCredentials } from '../../services/apiKeyStore';
+import { AiCredentials, AiProvider, ChatTurn, PROVIDER_NAMES, describeAiError, detectProvider } from '../../services/ai';
 import { analyzeRecent, askCoach, questionOnly } from '../../services/coach';
 import { timeAgo } from '../../utils/trackerStats';
 import AuthButton from '../../components/AuthButton';
@@ -25,8 +25,9 @@ const SUGGESTIONS = ['What should I focus on this week?', 'How is my sleep affec
 export default function CoachScreen({ navigation }: Props) {
   const { data } = useTracker();
   const { profile } = useSession();
-  const [apiKey, setKey] = useState<string | null | undefined>(undefined);
+  const [creds, setCreds] = useState<AiCredentials | null | undefined>(undefined);
   const [keyInput, setKeyInput] = useState('');
+  const [chosen, setChosen] = useState<AiProvider>('gemini');
   const [report, setReport] = useState<CoachReport | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState('');
@@ -36,37 +37,43 @@ export default function CoachScreen({ navigation }: Props) {
   const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
-    getApiKey().then(setKey);
+    getAiCredentials().then(setCreds);
     AsyncStorage.getItem(REPORT_KEY)
       .then(raw => raw && setReport(JSON.parse(raw)))
       .catch(() => undefined);
   }, []);
 
-  const provider = providerForKey(apiKey);
+  const provider = creds?.provider;
   const aiName = provider ? PROVIDER_NAMES[provider] : 'The AI';
 
+  // Pick the service automatically when the pasted key's format is known; the user can still change it.
+  const onKeyChange = (text: string) => {
+    setKeyInput(text);
+    const detected = detectProvider(text);
+    if (detected) setChosen(detected);
+  };
+
   const saveKey = async () => {
-    const value = keyInput.trim();
-    if (!providerForKey(value)) {
-      return setError('That does not look like a Gemini key (starts with AIza) or an Anthropic key (starts with sk-ant-).');
-    }
-    await setApiKey(value);
-    setKey(value);
+    const value = keyInput.trim().replace(/\s+/g, '');
+    if (value.length < 20) return setError('Paste the whole API key.');
+    const next = { provider: chosen, key: value };
+    await setAiCredentials(next);
+    setCreds(next);
     setKeyInput('');
     setError('');
   };
 
   const removeKey = async () => {
-    await clearApiKey();
-    setKey(null);
+    await clearAiCredentials();
+    setCreds(null);
   };
 
   const analyze = async () => {
-    if (!apiKey) return;
+    if (!creds) return;
     setAnalyzing(true);
     setError('');
     try {
-      const result = await analyzeRecent(apiKey, data, profile.name);
+      const result = await analyzeRecent(creds, data, profile.name);
       setReport(result);
       AsyncStorage.setItem(REPORT_KEY, JSON.stringify(result)).catch(() => undefined);
     } catch (e) {
@@ -78,14 +85,14 @@ export default function CoachScreen({ navigation }: Props) {
 
   const ask = async (text: string) => {
     const q = text.trim();
-    if (!apiKey || !q || asking) return;
+    if (!creds || !q || asking) return;
     setAsking(true);
     setError('');
     setQuestion('');
     setHistory([...history, { role: 'user', content: q }]);
     try {
       // The stored turn keeps the data block, so follow-up questions have the context.
-      const { answer, userTurn } = await askCoach(apiKey, history, q, data, profile.name);
+      const { answer, userTurn } = await askCoach(creds, history, q, data, profile.name);
       setHistory([...history, userTurn, { role: 'assistant', content: answer }]);
     } catch (e) {
       setHistory(history);
@@ -97,7 +104,7 @@ export default function CoachScreen({ navigation }: Props) {
     }
   };
 
-  if (apiKey === undefined) {
+  if (creds === undefined) {
     return (
       <SafeAreaView style={styles.container}>
         <ScreenHeader title="AI Coach" onBack={() => navigation.goBack()} />
@@ -110,7 +117,7 @@ export default function CoachScreen({ navigation }: Props) {
       <ScreenHeader title="AI Coach" onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {!apiKey ? (
+          {!creds ? (
             <View style={styles.card}>
               <Ionicons name="sparkles" size={32} color={colors.primary} />
               <Text style={styles.cardTitle}>Analyse your data with AI</Text>
@@ -119,14 +126,29 @@ export default function CoachScreen({ navigation }: Props) {
                 and what to try next. You can also ask it questions.
               </Text>
               <Text style={styles.body}>
-                Paste your own API key. A Gemini key comes from aistudio.google.com → Get API key (it starts with AIza and
-                has a free tier). An Anthropic key for Claude, from console.anthropic.com, also works.
+                Paste your own API key. A Gemini key comes from aistudio.google.com → Get API key (new keys start with AQ.,
+                older ones with AIza; there is a free tier). A Claude key from console.anthropic.com also works.
               </Text>
+              <Text style={styles.label}>Service</Text>
+              <View style={styles.segment}>
+                {(['gemini', 'claude'] as AiProvider[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[styles.segmentItem, chosen === p && styles.segmentActive]}
+                    onPress={() => setChosen(p)}
+                    accessibilityState={{ selected: chosen === p }}
+                  >
+                    <Text style={[styles.segmentText, chosen === p && styles.segmentTextActive]}>
+                      {p === 'gemini' ? 'Gemini (Google)' : 'Claude (Anthropic)'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               <AuthInput
-                label="Gemini or Anthropic API key"
-                placeholder="AIza… or sk-ant-…"
+                label={`${PROVIDER_NAMES[chosen]} API key`}
+                placeholder={chosen === 'gemini' ? 'AQ.… or AIza…' : 'sk-ant-…'}
                 value={keyInput}
-                onChangeText={setKeyInput}
+                onChangeText={onKeyChange}
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureToggle
@@ -188,14 +210,14 @@ export default function CoachScreen({ navigation }: Props) {
             </>
           )}
           {!!error && <Text style={styles.error}>{error}</Text>}
-          {apiKey && (
+          {creds && (
             <TouchableOpacity style={styles.removeKey} onPress={removeKey}>
               <Text style={styles.removeKeyText}>Remove API key from this phone</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
 
-        {apiKey && (
+        {creds && (
           <View style={styles.inputBar}>
             <TextInput
               style={styles.input}
@@ -230,6 +252,12 @@ const styles = StyleSheet.create({
   cardTitle: { color: colors.white, fontSize: 18, fontWeight: '700' },
   body: { color: colors.gray, fontSize: 14, lineHeight: 21 },
   privacy: { color: colors.gray, fontSize: 12, lineHeight: 18 },
+  label: { color: colors.white, fontSize: 14, marginBottom: -4 },
+  segment: { flexDirection: 'row', backgroundColor: colors.background, borderRadius: 14, padding: 4, gap: 4 },
+  segmentItem: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
+  segmentActive: { backgroundColor: colors.primary },
+  segmentText: { color: colors.gray, fontSize: 13, fontWeight: '600' },
+  segmentTextActive: { color: colors.background },
   rowBetween: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitle: { color: colors.white, fontSize: 17, fontWeight: '700' },
   meta: { color: colors.gray, fontSize: 12 },

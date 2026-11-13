@@ -1,5 +1,5 @@
 import { CoachArea, CoachReport, CoachTone, TrackerData, Workout } from '../types/tracker';
-import { AiError, ChatTurn, askAI } from './ai';
+import { AiCredentials, AiError, ChatTurn, askAI } from './ai';
 import { dateKey, dayRange, effectiveHealth, learningMinutesOn, topicTotals, watchDay } from '../utils/trackerStats';
 import { SPORTS } from '../utils/sports';
 
@@ -114,9 +114,8 @@ function parseReport(text: string): CoachReport {
 }
 
 /** Two-week review across health, workouts and learning. */
-export async function analyzeRecent(apiKey: string, data: TrackerData, name: string): Promise<CoachReport> {
-  const text = await askAI({
-    apiKey,
+export async function analyzeRecent(creds: AiCredentials, data: TrackerData, name: string): Promise<CoachReport> {
+  const text = await askAI(creds, {
     system: SYSTEM_PROMPT,
     schema: REPORT_SCHEMA,
     messages: [
@@ -130,7 +129,7 @@ export async function analyzeRecent(apiKey: string, data: TrackerData, name: str
 }
 
 /** Review of one workout, compared with earlier workouts of the same sport. */
-export async function analyzeWorkout(apiKey: string, workout: Workout, data: TrackerData): Promise<CoachReport> {
+export async function analyzeWorkout(creds: AiCredentials, workout: Workout, data: TrackerData): Promise<CoachReport> {
   const earlier = data.workouts
     .filter(w => w.sport === workout.sport && w.id !== workout.id && w.startedAt < workout.startedAt)
     .slice(0, 5)
@@ -145,8 +144,7 @@ export async function analyzeWorkout(apiKey: string, workout: Workout, data: Tra
     maxHeartRateSetting: data.goals.maxHeartRate,
     sleepLastNight: effectiveHealth(data, workout.date).sleepHours || undefined,
   };
-  const text = await askAI({
-    apiKey,
+  const text = await askAI(creds, {
     system: SYSTEM_PROMPT,
     schema: REPORT_SCHEMA,
     messages: [
@@ -164,7 +162,7 @@ export async function analyzeWorkout(apiKey: string, workout: Workout, data: Tra
  * same conversation reuse it from the history. Returns the turn as sent, to keep in the history.
  */
 export async function askCoach(
-  apiKey: string,
+  creds: AiCredentials,
   history: ChatTurn[],
   question: string,
   data: TrackerData,
@@ -175,8 +173,7 @@ export async function askCoach(
       ? `My data for the last 14 days:\n${JSON.stringify(buildDataContext(data, name))}\n\nMy question: ${question}`
       : question;
   const userTurn: ChatTurn = { role: 'user', content };
-  const answer = await askAI({
-    apiKey,
+  const answer = await askAI(creds, {
     system: `${SYSTEM_PROMPT}\n- Answer the question directly in a short reply (a few sentences or a short list). Use plain text without Markdown headings or tables.`,
     messages: [...history, userTurn],
   });
